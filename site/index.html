@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Will you open ?</title>
+  <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
+  <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <h1 class="sr-only">Will you open ?</h1>
+  <main class="stage">
+    <div id="title" class="title" aria-hidden="true">
+      <pre id="title-wide" class="ascii wide"></pre>
+      <pre id="title-narrow" class="ascii narrow"></pre>
+    </div>
+    <div id="letter" class="letter">
+      <pre id="envelope" class="ascii envelope" role="img"
+           aria-label="A sealed envelope with a red heart seal"></pre>
+      <div id="choices" class="choices">
+        <button id="yes" class="choice" aria-label="Yes"><span id="yes-art" class="ascii" aria-hidden="true"></span></button>
+        <button id="no" class="choice" aria-label="No"><span id="no-art" class="ascii" aria-hidden="true"></span></button>
+      </div>
+    </div>
+    <p id="loading" class="loading ascii" aria-hidden="true">. . .</p>
+  </main>
+  <button id="pause" class="pause ascii">[ pause ]</button>
+  <p id="status" class="sr-only" aria-live="polite"></p>
+  <span id="probe" class="ascii probe" aria-hidden="true">MMMMMMMMMM</span>
+  <script type="mpy" src="./main.py" config="./pyscript.toml"></script>
+</body>
+</html>
