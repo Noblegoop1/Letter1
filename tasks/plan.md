@@ -1,29 +1,31 @@
-# Implementation Plan: ASCII Love Letter — Part 1
+# Implementation Plan: "To Esther" desktop app
 
-## Overview
-Build the opening scene from `SPEC.md` (approved with defaults on 2026-10-31): massive ASCII headline,
-ASCII envelope with a heart seal, two churning YES/NO buttons in front, YES opens the flap in characters
-and slides the envelope away, NO shakes. Static site in `site/`, Python via PyScript/MicroPython.
+Spec: `SPEC.md` v3 (approved 2026-10-31). Modules: `CAPABILITY-MAP.md`. Stack: `docs/adr/0001-desktop-stack.md`.
+Progress (2026-11-01): gates G1–G5 built and tested; G6 release in progress (`tasks/todo.md`).
 
-## Architecture Decisions
-- `site/art.py` is pure: every function returns `(chars, cls)` — two lists of equal-width strings, the
-  characters and a per-cell colour class. `to_html` turns that into `<span>` runs. Tested in CPython.
-- `site/main.py` owns the DOM and one `requestAnimationFrame` loop; it only writes a `<pre>` when its
-  HTML changed.
-- Sizes live in `art.py` constants; `main.py` copies them into CSS variables so CSS can scale each
-  `<pre>` to the viewport (cols × measured char ratio) without Python on resize.
-- Two headline layouts (one line wide, two lines for portrait) switched by a CSS media query.
-- Flap: drawn per frame with a general line rasteriser (`` `-. `` / `.-'` runs), heart seal rides on
-  the flap tip and hides past 90°. Slide-away and fades are CSS transitions.
-- Deploy: GitHub Actions uploads `site/` only, so `reference/`, docs and research never ship.
+## Approach
+- **Gates in order (SPEC §19).** Each gate ends with unit tests, the headless self-test and screenshots
+  read by eye. The NO route starts only after G4.
+- **The engine comes first:** viewport, clock, glyphs, assets and state machine. Scenes are added onto
+  that shared base so both routes reuse it.
+- **Parallel work** happens only on pure modules with a fixed interface, each in its own files:
+  - the flower and ground pointillism, and the fireflies, in G3;
+  - the chase game core, in G5.
 
-## Task List
-See `tasks/todo.md`.
+  Integration and every scene file stay in this session.
+- **Night canvas contract** (shared by the night, flower and firefly code): a NumPy `float32` array of
+  shape `(640, 640, 3)`, indexed `[y, x]`, display RGB (no gamma), usually in 0..1. It is clipped once when
+  presented. The ground line is at `y = GROUND_Y` (500) and the flower root at `(320, GROUND_Y)`.
+- **Reused from the web version:**
+  - the `stage.py` core (phases, clock, easing, hash, Bayer) becomes `letter/engine/timeline.py`;
+  - the button big letters, hover ripple and heart sprite move to `letter/art/`;
+  - the Bayer dissolve idea and the `wind()` shape carry over.
 
-## Risks and Mitigations
-| Risk | Impact | Mitigation |
-|---|---|---|
-| CPython-tested code fails under MicroPython | High | Build the browser shell first and smoke-test `art.py` in PyScript before polishing art |
-| Font cell ratio differs per OS (Consolas 0.55 vs Menlo 0.60) | Med | CSS default 0.62 so nothing overflows before Python measures |
-| Hand-drawn art drifts out of shape | Low | Tests: rectangular rows, ASCII-only, mirror symmetry |
-| PyScript startup leaves a blank screen | Med | Measure; if slow, show an ASCII loading line in the HTML |
+## Risks
+| Risk | Mitigation |
+|---|---|
+| The night scene misses 60 fps | Budgets per part (SPEC §15); quality tiers; glow at half rate; moderngl only with approval |
+| Fonts blur when scaled | Render text at physical size (scale-aware atlas), never upscale text surfaces |
+| PyInstaller misses data files or the DLL path | `assets.py` resolves through `sys._MEIPASS`; frozen `--selftest` run from a copy outside the repo |
+| The flower doesn't match the reference | Screenshot side by side with the user's reference image; tune palettes and densities |
+| SmartScreen or antivirus on the unsigned exe | `--onedir`; document "More info → Run anyway" |

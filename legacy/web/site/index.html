@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Will you open ?</title>
+  <link rel="stylesheet" href="https://pyscript.net/releases/2026.7.3/core.css">
+  <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./night.css">
+  <link rel="stylesheet" href="./flower.css">
+  <link rel="stylesheet" href="./fireflies.css">
+</head>
+<body data-phase="letter">
+  <h1 class="sr-only">Will you open ?</h1>
+  <main id="camera" class="stage">
+    <div id="title" class="title" aria-hidden="true">
+      <pre id="title-wide" class="ascii wide"></pre>
+      <pre id="title-narrow" class="ascii narrow"></pre>
+    </div>
+    <div id="letter" class="letter">
+      <div id="float" class="float">
+        <pre id="env-back" class="ascii" aria-hidden="true"></pre>
+        <pre id="sheet" class="ascii sheet layer" aria-hidden="true"></pre>
+        <pre id="env-front" class="ascii layer" role="img"
+             aria-label="A sealed envelope with a red heart seal. Written on it: RAHHH, SHE OPENED IT"></pre>
+        <pre id="writing" class="ascii layer" aria-hidden="true"></pre>
+      </div>
+      <pre id="shadow" class="ascii shadow" aria-hidden="true"></pre>
+      <div id="choices" class="choices">
+        <button id="yes" class="choice" aria-label="Yes"><span id="yes-art" class="ascii" aria-hidden="true"></span></button>
+        <button id="no" class="choice" aria-label="No"><span id="no-art" class="ascii" aria-hidden="true"></span></button>
+      </div>
+    </div>
+    <p id="loading" class="loading ascii" aria-hidden="true">. . .</p>
+  </main>
+  <div id="world" class="world">
+    <pre id="ground" class="ascii" aria-hidden="true"></pre>
+    <span id="seed" class="ascii seed" aria-hidden="true">o</span>
+    <pre id="puff" class="ascii puff" aria-hidden="true"></pre>
+    <button id="flower" class="flower" aria-label="Wake the flower" inert><pre id="flower-art" class="ascii" aria-hidden="true"></pre></button>
+    <div id="fireflies" aria-hidden="true"></div>
+  </div>
+  <button id="pause" class="pause ascii" aria-label="Pause animation" aria-pressed="false">[ pause ]</button>
+  <p id="status" class="sr-only" aria-live="polite"></p>
+  <span id="probe" class="ascii probe" aria-hidden="true">MMMMMMMMMM</span>
+  <script type="mpy" src="./main.py" config="./pyscript.toml"></script>
+</body>
+</html>

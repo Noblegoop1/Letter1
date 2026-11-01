@@ -1,3 +1,7 @@
 # Unlicensed third-party reference code stays local (docs/ link to upstream).
 reference/
 __pycache__/
+.venv/
+build/
+dist/
+*.spec

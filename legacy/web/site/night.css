@@ -1,0 +1,21 @@
+/* Night meadow (night.py). Class letters are shared across layers, so every rule is scoped to #ground.
+   No text-shadow here: thousands of grass cells redraw ~10 times a second. main.py sizes the grid. */
+:root {
+  --night-bg: #070a14;   /* the page background eases from black to this */
+}
+
+#ground .s { color: #141c30; }   /* sky haze, high */
+#ground .k { color: #1c2740; }   /* sky haze, just above the horizon */
+#ground .f { color: #3a3428; }   /* paper fibre, dim cream */
+
+/* grass at rest, darkest (far rows, blade roots) to lightest (near tips) */
+#ground .a { color: #142a1f; }
+#ground .b { color: #1d3a28; }
+#ground .c { color: #284d33; }
+#ground .d { color: #36623f; }
+
+/* light spill: one to three steps above a cell's resting shade */
+#ground .e { color: #4a7d50; }
+#ground .g { color: #66a064; }
+#ground .h { color: #8cc47c; }
+#ground .w { color: #d2c486; }   /* warm tint on the tips nearest a strong light */

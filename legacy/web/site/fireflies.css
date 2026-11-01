@@ -1,0 +1,40 @@
+/* Fireflies. main.py adds one <span class="ff"> per firefly and sets --period / --delay / --peak / --depth
+   from fireflies.style(i); each frame it sets transform and opacity (the fade-in runs on the stage clock,
+   so pause freezes it). */
+#fireflies {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#fireflies .ff {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+  line-height: 1;
+  white-space: pre;
+  user-select: none;
+  /* depth 0 (far) .. 1 (near): a little larger, a wider glow */
+  font-size: calc(0.9em + 0.5em * var(--depth, 0.5));
+  color: #d6ff6a;
+  text-shadow:
+    0 0 calc(3px + 5px * var(--depth, 0.5)) rgb(214 255 106 / 0.95),
+    0 0 calc(8px + 14px * var(--depth, 0.5)) rgb(168 230 60 / 0.6);
+  /* the blink uses filter: opacity() so it never fights the fade-in's opacity */
+  animation: ff-blink var(--period, 2.4s) ease-in-out var(--delay, 0s) infinite both;
+}
+
+/* Rises to --peak and falls back to a faint ember; each firefly has its own period and delay. */
+@keyframes ff-blink {
+  0%, 100% { filter: opacity(0.12); }
+  40% { filter: opacity(var(--peak, 1)); }
+}
+
+/* Reduced motion: they sit at fixed spots and only pulse (overrides the global no-animation rule). */
+@media (prefers-reduced-motion: reduce) {
+  #fireflies .ff {
+    animation: ff-blink var(--period, 2.4s) ease-in-out var(--delay, 0s) infinite both !important;
+    will-change: auto;
+  }
+}

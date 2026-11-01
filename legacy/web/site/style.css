@@ -1,0 +1,247 @@
+:root {
+  --bg: #0c0910;
+  --cream: #f4e7cc;
+  --paper: #8d7f68;
+  --title: #ffdbe6;
+  --yes: #ff86ad;
+  --no: #b4b0d6;
+  /* width of one monospace cell in em; main.py measures the real value, this safe guess covers first paint */
+  --cw: 0.62;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--cream);
+}
+
+.ascii {
+  display: block;
+  margin: 0;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: 1em;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: pre;
+  font-variant-ligatures: none;
+}
+
+/* ---- camera: the letter scene, scaled by main.py for the dive into the sheet ---- */
+.stage {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2svh;
+}
+body[data-phase="night"] #camera,
+body[data-phase="seed"] #camera,
+body[data-phase="grown"] #camera,
+body[data-phase="bloom"] #camera,
+body[data-phase="bloomed"] #camera { display: none; }
+
+/* each block is N columns of cells: font-size makes N cells fill the width, capped by a height share */
+.title { animation: breathe 6s ease-in-out infinite; transition: opacity 0.6s ease; }
+.title pre { font-size: min(calc(94vw / (var(--cols) * var(--cw))), calc(19svh / var(--rows))); }
+.narrow { display: none; }
+@media (orientation: portrait) {
+  .wide { display: none; }
+  .title .narrow {
+    display: block;
+    font-size: min(calc(92vw / (var(--cols) * var(--cw))), calc(27svh / var(--rows)));
+  }
+}
+@keyframes breathe {
+  0%, 100% { transform: scale(1); filter: brightness(0.95); }
+  50% { transform: scale(1.012); filter: brightness(1.12); }
+}
+#title .t { color: #fff1f5; text-shadow: 0 0 0.45em rgba(255, 150, 190, 0.6); }
+#title .u { color: #ffc6d8; text-shadow: 0 0 0.45em rgba(255, 110, 160, 0.5); }
+#title .v { color: #f08cb0; text-shadow: 0 0 0.4em rgba(240, 80, 140, 0.45); }
+#title .x { color: #c95d8c; text-shadow: 0 0 0.35em rgba(200, 60, 120, 0.4); }
+#title .z { color: #3b1d35; }
+#title .l { color: #a25f7e; }
+
+.letter {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: min(calc(94vw / (var(--cols) * var(--cw))), calc(62svh / var(--rows)));
+}
+/* the top rows of each layer are headroom for the opening flap and rising sheet */
+.float {
+  position: relative;
+  margin-top: calc(var(--head) * -1em);
+  transform-origin: 50% 90%;
+  animation: float 7s ease-in-out infinite;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(-0.35deg); }
+  50% { transform: translateY(-0.6svh) rotate(0.45deg); }
+}
+.layer { position: absolute; top: 0; left: 0; }
+.sheet {
+  left: calc(var(--sx) * var(--cw) * 1em);
+  top: calc(var(--sy) * 1em);
+  will-change: transform;
+}
+.shadow { margin-top: 0.3em; animation: shadow 7s ease-in-out infinite; }
+@keyframes shadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.9; }
+  50% { transform: scaleX(1.05); opacity: 0.55; }
+}
+body:not([data-phase="letter"]) .float,
+body:not([data-phase="letter"]) .shadow { animation-play-state: paused; }
+
+/* envelope: paper lit from above (A brightest), cells opaque so the sheet can hide behind */
+#env-back .i, #env-front .i { color: #a25f7e; background: #1a0f17; }
+#env-front .A { color: #b8a684; background: #2c2229; }
+#env-front .B { color: #a3926f; background: #241c23; }
+#env-front .C { color: #8b7c5f; background: #1d171d; }
+#env-front .D { color: #75684f; background: #171217; }
+#env-front .o, #env-back .o { color: var(--cream); }
+#env-front .a { color: var(--cream); background: #2c2229; }
+#env-front .b { color: var(--cream); background: #241c23; }
+#env-front .c { color: var(--cream); background: #1d171d; }
+#env-front .d { color: var(--cream); background: #171217; }
+#env-front .h, #env-front .H { background: #241c23; }
+#env-back .O { color: #fff7e6; text-shadow: 0 0 0.4em rgba(255, 240, 210, 0.45); }
+#env-front .k { color: #7a6d58; }
+#env-front .h { color: #e23c4b; text-shadow: 0 0 0.5em rgba(226, 60, 75, 0.7); }
+#env-front .H { color: #ffb3b8; }
+#writing .w { color: #ffc3d3; font-style: italic; text-shadow: 0 0 0.35em rgba(255, 120, 160, 0.5); }
+#writing .m { color: #ffc3d3; opacity: 0.75; text-shadow: 0 0 0.4em rgba(255, 140, 180, 0.6); }
+#sheet .E { color: #c9b48d; background: #f3e7cc; }
+#sheet .F { color: #bba680; background: #e6d8b9; }
+#sheet .G { color: #ab966f; background: #d6c6a4; }
+#sheet .K { background: var(--bg); }
+#shadow .s { color: #2a1d2c; }
+
+/* ---- buttons ---- */
+.choices {
+  display: flex;
+  gap: 2.5em;
+  margin-top: -1.6em; /* overlap the envelope's bottom edge a little */
+  font-size: 0.6em;
+  transition: opacity 0.5s ease;
+}
+.choice {
+  padding: 0;
+  border: 0;
+  margin: 0;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.25s ease;
+}
+/* the art is rewritten while it ripples; clicks must land on the button, not a span that vanishes mid-click */
+.choice .ascii { pointer-events: none; }
+.choice .f { color: var(--cream); transition: color 0.25s ease, text-shadow 0.25s ease; }
+.choice .y { color: var(--yes); text-shadow: 0 0 0.5em rgba(255, 79, 139, 0.6); }
+.choice .n { color: var(--no); }
+.choice:focus-visible .f { color: #fff; text-shadow: 0 0 0.6em rgba(255, 220, 235, 0.8); }
+.choice:focus-visible { transform: translateY(-2px); }
+@media (hover: hover) { /* touch screens would keep the hover look stuck after a tap */
+  .choice:hover .f { color: #fff; text-shadow: 0 0 0.6em rgba(255, 220, 235, 0.8); }
+  .choice:hover { transform: translateY(-2px); }
+}
+.choice:focus-visible,
+.pause:focus-visible,
+.flower:focus-visible { outline: 2px dashed var(--yes); outline-offset: 0.4em; }
+
+.shake { animation: shake 0.45s; }
+@keyframes shake {
+  20% { transform: translateX(-0.8em); }
+  40% { transform: translateX(0.8em); }
+  60% { transform: translateX(-0.5em); }
+  80% { transform: translateX(0.3em); }
+}
+
+.gone { opacity: 0; pointer-events: none; }
+
+/* ---- night world ---- */
+.world {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  display: none;
+}
+body[data-phase="night"] .world,
+body[data-phase="seed"] .world,
+body[data-phase="grown"] .world,
+body[data-phase="bloom"] .world,
+body[data-phase="bloomed"] .world { display: block; }
+#ground, .seed, .puff, .flower { position: absolute; top: 0; left: 0; }
+.seed { color: #e8d9b0; text-shadow: 0 0 0.4em rgba(255, 240, 200, 0.6); will-change: transform; display: none; }
+.puff .d { color: #9c8f78; }
+.flower {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transform-origin: var(--root-x, 50%) 100%;
+  will-change: transform;  /* tilted from Python nearly every frame */
+}
+.flower[inert] { cursor: default; }
+.flower .ascii { pointer-events: none; }
+
+/* ---- chrome ---- */
+.pause {
+  position: fixed;
+  right: 12px;
+  bottom: 10px;
+  z-index: 2;
+  padding: 6px;
+  border: 0;
+  background: none;
+  color: var(--paper);
+  font-size: 14px;
+  cursor: pointer;
+}
+.pause:hover { color: var(--cream); }
+
+.loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--paper);
+  font-size: 24px;
+}
+body:not(.ready) .choices,
+body:not(.ready) .pause { visibility: hidden; }
+
+/* pinned to the corner so these never make the page taller than the screen */
+.sr-only {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  font-size: 100px;
+}
+
+body.paused * { animation-play-state: paused !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

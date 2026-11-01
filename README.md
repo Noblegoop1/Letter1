@@ -1,0 +1,87 @@
+# To Esther
+
+An interactive letter for one person, as a small Windows app. A lamp-lit ASCII envelope reads
+**To Esther** and asks **"Will you open?"**. Her answer decides which of two endings plays.
+
+Everything is drawn with text characters, except the night garden, which is made of glowing dots.
+
+## Sending it
+
+1. Send `dist/LetterToEsther-win64.zip` (about 30 MB; see [Building](#building) to make it).
+2. She extracts the zip anywhere and double-clicks **`LetterToEsther.exe`** inside the
+   `LetterToEsther` folder. There is nothing to install, and it never uses the internet.
+3. The app is not code-signed, so Windows may show **"Windows protected your PC"**. She chooses
+   **More info → Run anyway** (once).
+
+Needs Windows 10 or 11 (64-bit). The window opens at 80% of the screen; it can be resized or made full
+screen.
+
+## Controls
+
+| Input | Does |
+|---|---|
+| Mouse | hover and click the buttons (and, later, whatever asks to be clicked) |
+| ← / → then Enter | choose and confirm a button without the mouse |
+| Space | jump (only in the game on one of the routes) |
+| F11 or Alt+Enter | full screen; Esc leaves full screen |
+
+The story pauses by itself when the window is minimised or loses focus. If Windows "Show animations"
+is turned off, the motion is calmer and there are no flashes.
+
+## Development
+
+Python 3.14 with pygame-ce and NumPy, packaged with PyInstaller (see `docs/adr/0001-desktop-stack.md`).
+On this machine `python` is the Microsoft Store alias, so use `py` or the venv's Python.
+
+```bash
+py -m venv .venv
+.venv/Scripts/python -m pip install -r requirements-dev.txt
+.venv/Scripts/python -m letter                        # run the app
+.venv/Scripts/python -m unittest discover -s tests    # unit and headless scene tests
+.venv/Scripts/python -m letter --selftest             # both routes, scripted, hidden window; exit 0/1
+.venv/Scripts/python -m letter --selftest --window    # the same, in a visible window
+.venv/Scripts/python tools/shots.py                   # screenshots of both routes to build/shots/
+```
+
+`--scene <phase>` starts at a story phase and `--size WxH` sets the window size (both for development).
+The self-test writes its report to `%TEMP%\LetterToEsther-selftest.log`.
+
+### Building
+
+```bash
+.venv/Scripts/python tools/build.py
+```
+
+This produces `dist/LetterToEsther/` (the exe and its `_internal/` folder) and
+`dist/LetterToEsther-win64.zip`. To check a build the way she will run it, extract the zip to a new
+folder outside the project and run `LetterToEsther.exe --selftest` there.
+
+### Layout
+
+| Path | What |
+|---|---|
+| `letter/` | the app: `engine/` (story, viewport, glyphs, timing), `scenes/` (letter, NO route, night, chase, ending), `art/` (envelope, banner, buttons, heart, flower, meadow, sky, fireflies, chase, ending) |
+| `assets/fonts/` | JetBrains Mono and its licence (the only bundled asset) |
+| `tests/` | unit tests and headless scene tests |
+| `tools/` | `build.py`, `shots.py` and preview tools for the art modules |
+| `SPEC.md`, `CAPABILITY-MAP.md`, `tasks/` | the spec, the module map and gates, the plan and the acceptance traceability |
+| `docs/` | the stack decision, notes on the reference projects, superseded web-era specs |
+| `legacy/` | the retired web version and the earlier lotus flower (not shipped) |
+| `reference/` | local reference material (not published, not shipped) |
+
+## Known limitations
+
+- The exe is unsigned, hence the SmartScreen step above.
+- It has been tested on the development PC (including the packaged build run from outside the
+  project), but not yet on a clean Windows PC without Python.
+- At 1920 × 1080 the letter dips to about 56 fps during the half-second fade after YES; the rest runs at
+  60 fps.
+
+## Credits and licences
+
+- The project's own code: see `LICENSE`.
+- Bundled third-party software and the JetBrains Mono font (SIL Open Font License): see
+  `THIRD_PARTY_NOTICES.md`, which ships inside the release folder.
+- The night flower's pointillist technique is inspired by
+  [iremcnar/Flowers](https://github.com/iremcnar/Flowers); no code from it (or from the other reference
+  projects) is included.

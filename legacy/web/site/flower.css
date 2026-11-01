@@ -1,0 +1,35 @@
+/* Flower colours (site/flower.py class letters) and its glow. Palette after docs/flowers.md 4.4.
+   --glow (0..1) is set by main.py on #flower, the button around #flower-art. */
+#flower-art span { text-shadow: none; } /* only the head and halo glow, whatever other layers define */
+
+#flower-art .v { color: #6c45b0; }  /* stem, lower: deep violet */
+#flower-art .w { color: #8c54c8; }  /* stem, upper: lighter violet */
+#flower-art .l { color: #3c968c; }  /* leaf: teal */
+#flower-art .k { color: #8250c3; }  /* leaf tip: violet */
+
+#flower-art .d, #flower-art .r, #flower-art .e, #flower-art .g, #flower-art .a, #flower-art .b {
+  text-shadow: 0 0 calc(0.15em + 0.5em * var(--glow, 0)) rgb(var(--tone) / calc(0.15 + 0.6 * var(--glow, 0)));
+}
+#flower-art .d { color: #aa3ae1; --tone: 170 58 225; }   /* outer petals: purple */
+#flower-art .r { color: #f55cda; --tone: 245 92 218; }   /* inner petals: pink */
+#flower-art .e { color: #ffbefa; --tone: 255 150 235; }  /* pale rims */
+#flower-art .g { color: #ffd66e; --tone: 255 190 80; }   /* gold stamens */
+#flower-art .a { color: #7a3fc8; --tone: 150 70 240; }   /* halo, faint */
+#flower-art .b { color: #d291ff; --tone: 210 145 255; }  /* halo, near the head */
+#flower-art .c {                                          /* the heart: brightest, a two-layer glow */
+  color: #fff0ff;
+  text-shadow:
+    0 0 calc(0.2em + 0.4em * var(--glow, 0)) rgb(255 240 255 / calc(0.3 + 0.6 * var(--glow, 0))),
+    0 0 calc(0.4em + 1.2em * var(--glow, 0)) rgb(255 150 235 / calc(0.2 + 0.6 * var(--glow, 0)));
+}
+
+/* slow breathing, so even the dim bud seems alive */
+#flower-art { animation: flower-breathe 3s ease-in-out infinite; }
+@keyframes flower-breathe {
+  0%, 100% { filter: brightness(0.88); }
+  50% { filter: brightness(1.15); }
+}
+body.paused #flower-art { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  #flower-art { animation: none; }
+}

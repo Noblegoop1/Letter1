@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "site",
+      "name": "legacy-web",
       "runtimeExecutable": "py",
-      "runtimeArgs": ["-m", "http.server", "8000", "--directory", "site"],
+      "runtimeArgs": ["-m", "http.server", "8000", "--directory", "legacy/web/site"],
       "port": 8000
     }
   ]
