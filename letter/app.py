@@ -1,14 +1,16 @@
-"""The application: window, main loop, story clock, phase -> scene routing, scripted runs.
+"""The application: window, main loop, story clock, phase -> scene routing, sound, scripted runs.
 
-Story time only advances while the window is active, so minimising or switching away pauses everything.
+Story time only advances while the window is active, so minimising or switching away pauses everything,
+the sound included.
 """
 import os
 import time
 
 import pygame
 
-from letter import config
-from letter.engine import story
+from letter import config, soundtrack
+from letter.art import music
+from letter.engine import audio, story
 
 # which scene draws each phase (scenes are created lazily so a scene's big arrays live only when needed)
 SCENE_OF = {
@@ -45,6 +47,7 @@ def window_size():
 
 class App:
     def __init__(self, size=None, start="intro"):
+        audio.pre_init()
         pygame.init()
         pygame.display.set_caption(config.TITLE)
         self.windowed = size or window_size()
@@ -56,6 +59,7 @@ class App:
         self.frame_ms = []
         self.running = True
         self.pointer = None  # window pixels, or None when the pointer is outside the window
+        self.audio = audio.Audio(soundtrack.CUES, soundtrack.LEVEL, music.TRACKS, music.RATE)
 
     # --- story -----------------------------------------------------------------------------------
     def scene(self, phase=None):
@@ -93,6 +97,8 @@ class App:
             self.toggle_fullscreen()
         elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE and self.screen.get_flags() & pygame.FULLSCREEN:
             self.toggle_fullscreen()
+        elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_m:
+            self.audio.toggle_mute()
         else:
             if ev.type == pygame.MOUSEMOTION:
                 self.pointer = ev.pos
@@ -119,7 +125,10 @@ class App:
             self.t += dt
         self._advance(story.step(self.phase, self.since, self.t))
         scene, e = self.scene(), self.t - self.since
+        self.audio.pause(not self.active)
+        self.audio.follow(self.phase, e)
         scene.update(dt if self.active else 0.0, self.t, self.phase, e)
+        self.audio.update(dt if self.active else 0.0)
         scene.draw(self.screen, self.t, self.phase, e)
         self.frame_ms.append((time.perf_counter() - start) * 1000)
 
@@ -134,12 +143,14 @@ class App:
         pygame.quit()
 
     # --- scripted runs (self-test, screenshots) ----------------------------------------------------
-    def run_script(self, plan, dt=1 / 60, until=None, on_shot=None):
+    def run_script(self, plan, dt=1 / 60, until=None, on_shot=None, realtime=False):
         """Drive the app with a fixed time step. plan: sorted list of (story_time, action, arg).
         Actions: ("click", target name), ("key", pygame key), ("move", target name or (x, y) window px),
-        ("shot", name), ("expect", phase). Returns a list of failures (empty = pass)."""
+        ("shot", name), ("expect", phase). realtime: keep story time with the wall clock (for recording the
+        sound). Returns a list of failures (empty = pass)."""
         failures, queue = [], list(plan)
         visible = os.environ.get("SDL_VIDEODRIVER") != "dummy"
+        wall = time.perf_counter() - self.t
         self.scene().enter(self.phase, self.t)
         end = until if until is not None else (queue[-1][0] + 0.5 if queue else 1.0)
         while self.t < end and self.running:
@@ -160,6 +171,8 @@ class App:
                 elif action == "expect" and self.phase != arg:
                     failures.append("t=%.2f expected %s, was %s" % (self.t, arg, self.phase))
             self.frame(dt)
+            if realtime:
+                time.sleep(max(0.0, wall + self.t - time.perf_counter()))
             if visible:   # a real window (--selftest --window): show each frame and keep the window responsive
                 pygame.display.flip()
                 pygame.event.pump()

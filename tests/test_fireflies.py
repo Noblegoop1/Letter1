@@ -8,6 +8,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from letter.art import fireflies  # noqa: E402
+from letter.engine import audio  # noqa: E402
 
 HEAD = (320.0, 300.0)
 SIZE = fireflies.SIZE
@@ -372,6 +373,10 @@ class InvitationTests(unittest.TestCase):
 
 
 class BudgetTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        audio.wait_for_music()   # an earlier test's app may still be making music: time on a quiet machine
+
     def test_message_fits_the_frame_budget(self):
         """SPEC 15: the message fireflies (~1,200) while gathering and formed: update, the three layers
         and lights for the whole swarm <= 3 ms per frame on this PC (best of runs)."""

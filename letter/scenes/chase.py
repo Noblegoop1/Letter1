@@ -11,7 +11,7 @@ import math
 
 import pygame
 
-from letter import config
+from letter import config, soundtrack
 from letter.art import buttons, chase, ending, sheet
 from letter.engine import glyphs
 from letter.engine.timeline import approach, clamp
@@ -55,6 +55,7 @@ class ChaseScene(Scene):
         self.pointer = None
         self.near = 1e3                  # smoothed pointer distance to the NO button, logical px
         self.shake = (0.0, 0.0)
+        self.heard = (0, 0)              # jumps and stumbles already sounded
         pygame.mouse.set_visible(False)  # one pointer on screen: the game's
         self.resize(app.size)
 
@@ -103,6 +104,12 @@ class ChaseScene(Scene):
     def update(self, dt, t, phase, e):
         if phase == "chase":
             self.game.update(dt)
+            jumps, stumbles = self.game.jumps, self.game.stumbles
+            if jumps > self.heard[0]:
+                self.app.audio.play("jump")
+            if stumbles > self.heard[1]:
+                self.app.audio.play("stumble")
+            self.heard = (jumps, stumbles)
             if self.game.cornered:
                 self.app.emit("course-end")
         elif phase == "cornered":
@@ -110,6 +117,7 @@ class ChaseScene(Scene):
             far = 1e3 if self.pointer is None else math.dist(self.pointer, self._no_centre())
             if dt > 0:
                 self.near = approach(self.near, far, dt, NEAR_TAU)
+            self.app.audio.loop("heartbeat", soundtrack.heartbeat(self.near), 0.15, log=False)
             dx, dy = ending.proximity_shake(self.near, t)
             self.shake = (dx * config.MOTION, dy * config.MOTION)
 

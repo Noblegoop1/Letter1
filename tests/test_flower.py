@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np  # noqa: E402
 
 from letter.art import flower  # noqa: E402
+from letter.engine import audio  # noqa: E402
 
 BG = (0.01, 0.012, 0.03)
 
@@ -32,6 +33,7 @@ def drawn(c):
 class FlowerTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        audio.wait_for_music()   # time the budgets on a quiet machine
         cls.f = flower.Flower()
 
     def test_contract_constants(self):

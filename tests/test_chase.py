@@ -190,16 +190,16 @@ class Controls(Runs):
 
 
 class Course(Runs):
-    def test_c2_a_typical_player_finishes_in_60_to_120_s(self):
+    def test_c2_a_typical_player_finishes_in_about_20_s(self):
         for run in (self.typical, play(jumper())):
             secs, c = (run["secs"], run["c"]) if isinstance(run, dict) else run[:2]
             self.assertTrue(c.cornered)
-            self.assertTrue(60 <= secs <= 120, secs)
+            self.assertTrue(15 <= secs <= 26, secs)
 
-    def test_c2_a_player_who_never_jumps_finishes_under_130_s(self):
+    def test_c2_a_player_who_never_jumps_finishes_under_30_s(self):
         self.assertTrue(self.never["c"].cornered)
-        self.assertLess(self.never["secs"], 130)
-        self.assertGreater(self.never["trips"], 20)
+        self.assertLess(self.never["secs"], 30)
+        self.assertGreater(self.never["trips"], 4)
 
     def test_phases_run_a_b_c_then_cornered_near_their_lengths(self):
         seen, first = [], {}
@@ -209,7 +209,7 @@ class Course(Runs):
                 first[f["phase"]] = f["t"]
         self.assertEqual(seen, ["A", "B", "C", "cornered"])
         a, b = first["B"] - first["A"], first["C"] - first["B"]
-        self.assertTrue(16 <= a <= 24 and 38 <= b <= 50, (a, b))
+        self.assertTrue(3 <= a <= 6.5 and 6.5 <= b <= 11.5, (a, b))
 
     def test_c3_after_a_collision_it_recovers_and_progress_keeps_rising(self):
         log = self.never["log"]
@@ -280,7 +280,7 @@ class NoButton(Runs):
         self.assertGreater(max(gaps) - min(gaps), 20)                          # the distance changes
         dx = [abs(b["no"][0] - a["no"][0]) for a, b in zip(log, log[1:])]
         still = sum(1 for d in dx if d < 0.02) / len(dx)
-        self.assertGreater(still, 0.1)                                          # it pauses ...
+        self.assertGreater(still, 0.05)                                         # it pauses ...
         self.assertLess(still, 0.9)                                             # ... and resumes
 
     def test_no_keeps_ahead_of_the_pointer_and_never_overlaps_obstacles(self):
@@ -386,8 +386,8 @@ class Obstacles(unittest.TestCase):
         slowest = {}
         for _, _, p, kind, _ in self.groups:
             slowest.setdefault(kind, p)
-        self.assertEqual(set(slowest), set(chase._KINDS) | set(chase._CLUSTERS))
-        for kind, p in slowest.items():
+        for kind in set(chase._KINDS) | set(chase._CLUSTERS):   # every kind, even ones a short course skips
+            p = slowest.get(kind, 1)
             c = chase.Chase()
             c._starts = [-math.inf] * (p + 1)
             c._v = chase._PHASES[p][1]
@@ -414,11 +414,11 @@ class Obstacles(unittest.TestCase):
             v = chase._PHASES[b[2]][1]
             self.assertGreaterEqual(b[0] - a[1], v * (chase._JUMP_T + chase._REACT), (a, b))
 
-    def test_the_course_has_every_kind_and_phase_a_is_gentle(self):
+    def test_the_course_is_varied_and_phase_a_is_gentle(self):
         kinds = {g[3] for g in self.groups}
-        self.assertEqual(kinds, set(chase._KINDS) | set(chase._CLUSTERS))
+        self.assertGreaterEqual(len(kinds), 5)              # a short course (about 20 s) still mixes them
+        self.assertTrue({"wall", "gap"} <= kinds and kinds & set(chase._CLUSTERS))
         self.assertTrue({g[3] for g in self.groups if g[2] == 0} <= {"barrier", "block", "wall", "gap"})
-        self.assertTrue(any(g[3] in chase._CLUSTERS for g in self.groups if g[2] == 1))
 
     def test_deterministic_per_seed(self):
         self.assertEqual(chase._build(3), (self.groups, self.starts, self.end))

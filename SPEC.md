@@ -21,7 +21,7 @@ now live in `docs/superseded/web/` for history only. The module index and build 
 | Visual rule | "Every visual is ASCII" | Still ASCII for the envelope, paper, dedication, questions, all text, buttons, effects, dissolves, heart shatter, chase game, glitch and face (user decision, 2026-10-31). The night flower, meadow and fireflies are pointillist particle dots; an optional ASCII rendering of the flower can come later. |
 | Envelope writing | `RAHHH` / `SHE OPENED IT` | **To Esther** (fades in on launch) |
 | Flower | ASCII placeholder (`site/flower.py`) | Pointillist particle flower after iremcnar/Flowers at 640 × 640 logical (see §10 and open question Q1) |
-| Finale (YES route) | The bloomed garden was the end | The fireflies gather into "Will you go on a date Tuesday?" with its own YES/NO: YES → a warm kaomoji ending and the app closes; NO → the crying-face ending (§10.7) |
+| Finale (YES route) | The bloomed garden was the end | The fireflies gather into "Will you go on a date with me?" with its own YES/NO: YES → a warm kaomoji ending and the app closes; NO → the crying-face ending (§10.7) |
 | Fireflies | 10 fireflies orbiting the flower | 30–60 detailed fireflies travelling the whole night scene; they rise out of the grass, some pass behind it, a few drift close as soft out-of-focus lights |
 | Question banner | Pixel-font letters of `#` and `/` | Shaded ASCII lettering: a real typeface cut into cells, each cell the best-fitting mark, lit from the top left, with an extruded side (§9) |
 | Flower | Purple and pink pointillist lotus (later in "sunrise" colours) | A pointillist sea holly in the user's blue gradients, glowing like the ocean under the moon (§10.4) |
@@ -29,6 +29,7 @@ now live in `docs/superseded/web/` for history only. The module index and build 
 | Pace | 10–24 Hz redraws, 4.5 s reveal | 60 fps; durations tuned by one `SPEED` setting (§13) |
 | No button | Shakes, letters go wild | A full alternate route: questions, earthquake, swap, heart shatter, chase game, ending (§15–§18) |
 | Pause button | On screen | Removed (not part of the game look); the clock pauses itself when the window loses focus |
+| Sound | None | Effects, ambience and a procedural music theme, all offline (§21); `M` mutes |
 
 **Carries over:**
 - the phase/clock/easing/hash/Bayer core (`stage.py`);
@@ -105,7 +106,8 @@ starts at once, offline, with nothing else installed.
   - fireflies roam the whole square.
 - **A7 Fonts:** one bundled SIL-OFL monospace family, JetBrains Mono (regular, bold, italic), with its
   licence file. It draws every glyph. It was downloaded once at development time into `assets/fonts/`.
-- **A8 Sound:** none in this version.
+- **A8 Sound:** added 2026-11-01 at the user's request: effects, ambience and procedural music, all
+  offline (§21).
 - **A9 Web version:** `site/` moves to `legacy/web/` unchanged, and `.github/workflows/pages.yml` is
   deleted. Nothing in `legacy/` ships.
 - **A10 Commits:** none until you ask.
@@ -130,7 +132,9 @@ py -m venv .venv                                   # once
 .venv\Scripts\python -m unittest discover -s tests -v
 .venv\Scripts\python -m letter --selftest          # scripted run of both routes, headless, exit code 0/1
 .venv\Scripts\python tools\shots.py                # render reference screenshots to build\shots\ for review
-.venv\Scripts\python tools\build.py                # PyInstaller release -> dist\LetterToEsther\ + zip
+.venv\Scripts\python tools\sounds.py               # cut assets\sounds\ from the packs in reference\audio-sources\ (§21)
+.venv\Scripts\python tools\listen.py               # record each path's soundtrack to build\sound\*.wav, check levels
+.venv\Scripts\python tools\build.py                # sounds, then PyInstaller release -> dist\LetterToEsther\ + zip
 .venv\Scripts\python tools\build.py --clean        # remove build\ and dist\
 ```
 
@@ -146,6 +150,7 @@ letter/                 the application package (python -m letter)
     particles.py        NumPy splat, glow, dither helpers
     timeline.py         phases, events, guards (from stage.py)
     assets.py           finds bundled files both from source and from the PyInstaller folder
+    audio.py            sound over pygame.mixer: effects, loops, generated music, the cue sheet (§21)
   scenes/
     letter.py           envelope, dedication, question, buttons (shared by both routes)
     yes_reveal.py       dissolve, sheet, zoom
@@ -155,9 +160,12 @@ letter/                 the application package (python -m letter)
     no_route.py         questions, earthquake, swap, heart shatter, escape
     chase.py            320 x 320 ASCII runner
     ending.py           cornered button, glitch, face, tear, black
-  art/                  pure geometry/text helpers kept from the web version (buttons, heart, dissolve)
+  art/                  pure geometry/text helpers kept from the web version (buttons, heart, dissolve),
+                        and the procedural music (music.py)
+  soundtrack.py         the cue sheet and mix levels (data, §21)
 assets/fonts/           bundled OFL fonts + their licence files
-tools/                  build.py, shots.py, make_icon.py
+assets/sounds/          sound effects made by tools/sounds.py (shipped; not in git, §21)
+tools/                  build.py, shots.py, sounds.py, listen.py, preview tools
 tests/                  unit tests (pure logic) + headless scene/scenario tests
 docs/                   adr/, flowers.md, loveyou.md, neonbutterfly.md, superseded/web/
 legacy/web/             the retired web app (not shipped)
@@ -447,12 +455,12 @@ YES locks both buttons immediately. Repeated clicks, NO, and hover effects do no
    - formation: they settle, and the lettering becomes readable.
 
    No teleporting and no snapping. Their pulsing and glow continue throughout.
-2. **The message is made of fireflies.** The exact text **"Will you go on a date Tuesday?"** is set in the
+2. **The message is made of fireflies.** The exact text **"Will you go on a date with me?"** is set in the
    bundled font, rasterised to a bitmap, and sampled into cells; every occupied cell is one firefly.
    - The existing fireflies take some of the places. Extra fireflies, with the same look and behaviour,
      fly in from the grass and the edges of the night until every cell is filled, so the letters are
      filled, not outlined.
-   - Layout: two lines ("Will you go on" / "a date Tuesday?"), centred, in the upper sky of the 640 × 640
+   - Layout: two lines ("Will you go on" / "a date with me?"), centred, in the upper sky of the 640 × 640
      scene, clear of the flower's head; the moon may sit behind the end of a line.
    - Once formed, each firefly keeps pulsing and flickering a little and adds a soft halo through the
      bloom pass. The lettering stays pointillist, not a neon sign, and never outshines the flower.
@@ -580,11 +588,12 @@ cacti.
   drawn shapes, to be forgiving.
 - **Course:** scripted, with seeded variation, and always fair (every gap leaves enough room to land and
   react).
-  - **Phases:**
-    - A, about 20 s: introduction, single low walls, a `[ SPACE ]` hint once;
-    - B, about 45 s: more walls, sizes and gaps, some clusters, the NO button pulling ahead;
-    - C, about 25 s: final approach, the NO button closer, obstacles thinning out.
-  - Total 60–120 s, target about 90 s; under 130 s even for a player who never jumps.
+  - **Phases** (a short game, user change 2026-11-01: about 20 s in all):
+    - A, about 4.5 s: introduction, a single low obstacle, a `[ SPACE ]` hint once;
+    - B, about 8.5 s: walls of several sizes, a gap, a cluster, the NO button pulling ahead;
+    - C, about 4.5 s: final approach, the NO button closer;
+    - then a short run-out and the stop at the end wall.
+  - Total about 20 s for a typical player (15–26 s); under 30 s even for a player who never jumps.
 - **Collision:** a short reaction (the pointer flashes at most twice and a few glyphs scatter), a brief
   slowdown, then the course continues. The NO button gains a little lead. No restart and no game over.
 - **Cornered** (§13 step 1): scrolling stops and the NO button is trapped against a wall, hovering and
@@ -596,7 +605,7 @@ cacti.
 
 **Acceptance (chase):**
 - C1: Space jumps and nothing else does.
-- C2: playtime is within 60–120 s for a typical player, and under 130 s even for a player who never
+- C2: playtime is about 20 s (15–26 s) for a typical player, and under 30 s even for a player who never
   jumps (scripted test).
 - C3: after a collision it recovers and progress continues.
 - C4: the NO button is visible for the whole chase.
@@ -675,7 +684,7 @@ invitation's YES ending is in §10.7.
 | NO: letgo | 2.5 |
 | YES: farewell (scatter 0–3, brighten 1–3.5, dim 4.5–8, black by 8) | 8.0 |
 | YES: joy (smile 0.6–2.8, love eyes 3.2–5.6, fade 5.8–7.0) | 7.5 |
-| Chase | about 90 |
+| Chase | about 20 |
 | Ending: freeze, glitch, dissolve | 0.4 / 2.0 / 2.5 |
 | Ending: face, tear form, tear fall | 2.0 / 1.0 / 3.5 |
 | Final fade | 2.5 |
@@ -716,6 +725,8 @@ invitation's YES ending is in §10.7.
   - If SmartScreen warns "unknown publisher" (the build is unsigned), they choose **More info → Run
     anyway**.
   - Nothing else to install.
+- **Sounds:** `tools/build.py` first runs `tools/sounds.py`, so the release always carries
+  `assets/sounds/` (§21), which is not in git.
 - **Not shipped:** `legacy/`, `docs/`, `tests/` and `reference/`.
 
 **Acceptance (release):**
@@ -742,6 +753,9 @@ invitation's YES ending is in §10.7.
   - the ending order and "exactly one tear".
 - **Headless scene tests:** each scene is stepped with a fake clock and scripted input under
   `SDL_VIDEODRIVER=dummy`, checking states and that nothing throws.
+- **Sound (§21):** `tests/test_sound.py` (names, music, cue timing, silence without a device, pause and
+  mute, with SDL's dummy audio driver); `tools/listen.py` records each path in real time for the levels
+  and for listening by ear.
 - **Screenshots:** `tools/shots.py` renders key frames of both routes at 1280 × 800 and 1920 × 1080 to
   `build/shots/`. They are reviewed by eye at each gate (Claude reads the PNGs). This is the visual
   check.
@@ -764,7 +778,8 @@ invitation's YES ending is in §10.7.
   - adding sound;
   - commits and pushes;
   - shipping any iremcnar code;
-  - changing the story beats.
+  - changing the story beats;
+  - new sound sources (sound itself was asked for and added on 2026-11-01, §21).
 - **Never:**
   - network access at runtime;
   - copying `reference/` code without permission;
@@ -783,6 +798,8 @@ invitation's YES ending is in §10.7.
 6. **G6 Release:** full verification of both routes and the frozen build, docs, the zip.
 7. **G7 Finale and chase redesign (2026-11-01):** first the chase redesign (§12), then the firefly
    invitation and its endings (§10.7); then G6's checks again on the new build.
+8. **G8 Sound (2026-11-01):** the sound tool, procedural music, the audio engine and cue sheet (§21);
+   then G6's checks again.
 
 ## 20. Open questions (the default in bold is used if you approve as is)
 1. **Q1 Flower code licence:** iremcnar/Flowers has no licence, so shipping its code in an exe would be
@@ -797,3 +814,97 @@ invitation's YES ending is in §10.7.
    wider night that only keeps the flower itself at 640 × 640.
 4. **Q4 Fonts:** resolved 2026-10-31: everything is ASCII in JetBrains Mono (A2, A7). No display font.
 5. **Q5 The face:** answered 2026-11-01: an emote (kaomoji) face, `` (´•ω•`) `` (§13).
+
+## 21. Sound (`sound`), added 2026-11-01
+User brief (2026-11-01): a complete, choreographed soundtrack (effects, music, ambience, transitions and
+musical cues), bundled and fully offline, reusing the existing systems. The brief was cut off after its
+list of sources, and the user then asked Claude to design the rest. This section is that design.
+
+**Sources and licences:**
+- **Effects and ambience** come from three free packs, downloaded once to `reference/audio-sources/` (not
+  in git, not shipped):
+  - Daily Sounds "Game Starter Sound Pack (Free)" (dailysounds.org): the boom, heartbeat, glitch, bell,
+    swoosh, riser, power-down and stinger;
+  - Willosuna "Free Game & UI Sound Pack" (willosuna.itch.io): the chase's jump and stumble, and the
+    heart's crack and shatter;
+  - Mixkit (mixkit.co, Mixkit Sound Effects Free License): paper, pencil, clicks, sparkles, crickets, wind.
+- All three allow their sounds inside a finished app and forbid sharing the raw files on their own, edited
+  or not. So `tools/sounds.py` cuts, fades, mixes to mono, matches loudness and writes only the sounds the
+  app uses to `assets/sounds/` as 16-bit WAV, and **`assets/sounds/` is not in git** (it is in the build).
+  `tools/build.py` regenerates it first. Credits are in `THIRD_PARTY_NOTICES.md` (none is required).
+- **Music is original and procedural:** `letter/art/music.py` writes every note with NumPy when the app
+  starts (on a worker thread, cached), so there are no music files and no licence questions.
+
+**Architecture** (reusing the story machine and the scenes; no new dependency):
+- `letter/engine/audio.py`, `Audio`: a thin wrapper over `pygame.mixer` (SDL_mixer, already in pygame-ce).
+  - one-shot effects on free channels;
+  - named loops on reserved channels, each with a time-based volume ramp (fade in, duck, fade out);
+  - generated music turned into sounds on the main thread when the worker has it; a loop asked for
+    before its music is ready starts when it is;
+  - silence instead of errors when there is no audio device or a sound file is missing.
+- `letter/soundtrack.py`: the cue sheet (`CUES`), mix levels (`LEVEL`) and the music list. It is data:
+  `phase -> [(seconds into the phase, action, ...)]`, fired by `Audio.follow(phase, e)` every frame when
+  `e` passes each cue's time, so cues land on the same beats as the pictures (at any `SPEED`).
+- **Scenes add only what isn't a story beat:** hover on the envelope's and the invitation's buttons, the
+  chase's jumps and stumbles (counters on `Chase`), and the cornered heartbeat's loudness, which follows
+  the pointer's distance like the shake does.
+- **Pause:** when the window loses focus, story time stops and so does every sound; they continue
+  together.
+- **Mute:** `M` toggles all sound.
+
+**Music** (`letter/art/music.py`; one theme in F major for the whole piece):
+
+| Track | Where | What |
+|---|---|---|
+| `theme` | intro, letter | A music-box waltz (3/4, 76 bpm, 16 bars, loops) over a soft pad |
+| `theme_minor` | no-1 to no-3 | The same tune in F harmonic minor, slower (66 bpm); crossfades in on the first NO |
+| `night` | night to farewell | A slow pad (Fmaj9, Dm9, B♭maj9, C6/9, 8 s each) with sparse glockenspiel stars and a low root |
+| `chase` | chase | D minor, 120 bpm: plucked bass, a chiptune arpeggio, a light kick and hat |
+| `tension` | cornered | A low D drone that swells slowly, under the heartbeat |
+| `grow` | seed | A glockenspiel arpeggio climbing as the stem grows (4.5 s) |
+| `bloom` | bloom | A warm chord swells as the flower opens, with a celesta run |
+| `motif` | gather | The theme's first four bars on celesta as the fireflies form the question. It stops on the dominant, unresolved: the question waits |
+| `joy` | joy | The theme's last two bars resolve to F major as she smiles; a two-note chime for the love eyes; one soft heartbeat on the pulse |
+| `letgo` | letgo | A falling F-minor celesta line as the message disperses |
+| `sad` | face | A few slow music-box notes in F minor under the face; one high note as the tear lets go; it fades with the face |
+
+**Cue sheet** (seconds into the phase at `SPEED = 1`; levels are in `soundtrack.LEVEL`):
+
+| Phase | Sound |
+|---|---|
+| intro | `theme` fades in (2 s); pencil as "To Esther" writes itself (0.4) |
+| letter, no-1 to no-3 | a hover tick on each button the pointer (or the arrow keys) moves onto |
+| yes-reveal | click and bell (0); the flap (0.1); the sheet rises (0.4); a sparkle whoosh into the night (2.0), peaking as the night begins; `theme` fades out (0.5 to 3.0) |
+| night | crickets and wind fade in; `night` fades in (3 s) |
+| seed | the seed falls with a wand sparkle (0.4); puff (1.2); `grow` (2.0) |
+| bloom | `bloom` and a fairy sparkle (0) |
+| bloomed | a soft sparkle as the fireflies arrive (0.5) |
+| gather | `night` ducks; `motif` (0.2) |
+| invite | a soft tone as the buttons appear (0); hover ticks |
+| farewell | click and bell (0); a sparkle whoosh as they scatter (0.1); `night` comes back up (0.3); everything fades out (4.5 to 8) |
+| joy | `joy` (0) |
+| letgo | click (0); `letgo` (0); everything else fades out (0 to 2.5) |
+| no-1 | click; the page turns; `theme` crossfades to `theme_minor` (1.5 s) |
+| no-2 | click; the boom of the earthquake; `theme_minor` ducks under it and comes back (0.9) |
+| no-3 | click; a swoosh as the buttons swap |
+| no-4 | click (0); the music fades out (0 to 0.8); crack (0.3); shatter and glittering fragments (0.8); the pencil writes the message (2.4); the envelope opens (4.5); the sheet (4.8); the hop (5.7) and its landing (6.4); a riser into the chase (6.5) |
+| chase | `chase` fades in with the world (0.6 s); jump and stumble sounds from the game |
+| cornered | `chase` fades out; `tension` fades in; a low stinger (0); the heartbeat loop (from the scene), from a quiet pulse when the pointer is far to full when it is close, on the same curve as the tremble |
+| glitch | everything stops on the catch (0, the freeze); digital glitches (0.4, 1.3) with electric static (0.5); a power-down as the world dissolves (2.4) |
+| face | `sad` (0) |
+| black, exit | silence |
+
+**Mix:** the tool matches the effects to one loudness, so `LEVEL` alone sets the balance: the music sits
+under the effects, the ambience lower still, and nothing clips (checked on recorded runs).
+
+**Acceptance (sound):**
+- S1: every sound the cue sheet, the scenes and `LEVEL` name exists after `tools/sounds.py`, and every
+  music track generates: finite, peak below 0 dBFS, the loops seamless (unit tests).
+- S2: each cue fires once, at its time, in its phase, and never in another route (headless test with the
+  dummy audio driver).
+- S3: the app runs silently, without errors, when there is no audio device or `assets/sounds/` is missing.
+- S4: losing focus pauses sound with the story; `M` mutes and unmutes.
+- S5: recorded runs of all three paths (`tools/listen.py`: SDL's disk audio driver, real time) never clip
+  and keep the effects above the music; the WAVs are for listening by ear.
+- S6: the release includes `assets/sounds/`, and the frozen self-test passes.
+- S7: no network access; nothing in `reference/` ships.

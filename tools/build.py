@@ -36,6 +36,9 @@ def main():
             shutil.rmtree(d, ignore_errors=True)
         print("cleaned build/ and dist/")
         return 0
+    import sounds   # tools/sounds.py: assets/sounds/ isn't in git (the packs' licences), so make it fresh
+    if sounds.main() != 0:
+        return 1
     os.makedirs(BUILD, exist_ok=True)
     icon = os.path.join(BUILD, "icon.ico")
     make_icon(icon)

@@ -337,6 +337,7 @@ class LetterScene(no_route.NoRoute, Scene):
             for name, b in self.buttons.items():
                 if name == over and not b.hovered and phase in ("letter", "no-1", "no-2", "no-3"):
                     b.hover_since = self.app.t
+                    self.app.audio.play("hover")
                 b.hovered = name == over
         elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
             name = self._button_at(ev.pos)
@@ -346,6 +347,7 @@ class LetterScene(no_route.NoRoute, Scene):
             by_x = sorted(self.buttons, key=lambda n: SLOT_CENTRES[self.buttons[n].slot][0])
             self.focus = by_x[0] if ev.key == pygame.K_LEFT else by_x[-1]
             self.buttons[self.focus].hover_since = self.app.t
+            self.app.audio.play("hover")
         elif ev.type == pygame.KEYDOWN and ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and self.focus:
             if not story.locked(phase, self.app.since, self.app.t):
                 self.app.emit(self.focus)

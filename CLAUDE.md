@@ -12,8 +12,9 @@ module index and gate order. `docs/adr/0001-desktop-stack.md` records the stack 
 Status: SPEC v3 **approved 2026-10-31** (defaults for Q1–Q5; later change, same day: the envelope, paper, dedication, questions and all text stay ASCII in JetBrains Mono; only the night flower, meadow and fireflies are particle dots; further same-day changes are listed in SPEC's status line: shaded ASCII banner, visible tilt and hover, the flower is now a sea holly in blue gradients, clouds and moon; 2026-11-01: the chase player is a mouse *pointer*, the ending face a kaomoji). Gates
 G1–G5 are built (both routes play end to end). **G7 (2026-11-01) is built and tested:** the chase is
 redesigned as a pointer-vs-floating-NO-button runner (SPEC §12), and the YES route gains the firefly
-invitation, "Will you go on a date Tuesday?", with its own YES/NO and two endings (SPEC §10.7). G6's
-release checks follow (see `tasks/todo.md` for what is verified). User-facing notes are in `README.md`. Work is spec-gated: specify → plan → tasks → implement,
+invitation, "Will you go on a date with me?", with its own YES/NO and two endings (SPEC §10.7). **G8
+(2026-11-01) adds sound** (SPEC §21): effects and ambience cut from three free packs, and procedural music.
+G6's release checks follow (see `tasks/todo.md` for what is verified). User-facing notes are in `README.md`. Work is spec-gated: specify → plan → tasks → implement,
 with approval between. Don't commit unless asked.
 
 ## Commands (SPEC §4)
@@ -25,7 +26,9 @@ py -m venv .venv
 .venv\Scripts\python -m unittest discover -s tests -v
 .venv\Scripts\python -m letter --selftest       # scripted run of both routes (add --window to watch it)
 .venv\Scripts\python tools\shots.py             # screenshots to build\shots\ (look at them)
-.venv\Scripts\python tools\build.py             # dist\LetterToEsther\ + zip
+.venv\Scripts\python tools\sounds.py            # assets\sounds\ from reference\audio-sources\ (not in git)
+.venv\Scripts\python tools\listen.py            # record each path's sound to build\sound\ (real time)
+.venv\Scripts\python tools\build.py             # sounds, then dist\LetterToEsther\ + zip
 ```
 
 `python` on this machine is the Microsoft Store alias; use `py` or the venv's python. No `gh` CLI.
@@ -33,14 +36,15 @@ py -m venv .venv
 ## Layout
 - `letter/` — the app package (`engine/`, `scenes/`, `art/`).
 - `assets/fonts/` — bundled OFL fonts and their licence files.
+- `assets/sounds/` — the effects, made by `tools/sounds.py`; shipped, but never in git (see Rules).
 - `tools/` — build and screenshot tools.
 - `tests/` — the unit tests and headless scene tests.
 - `legacy/` — `web/`: the retired PyScript site and its tests; `desktop/`: the superseded lotus flower.
   Not shipped; don't extend them.
 - `docs/`: `adr/`, the reference-repo docs (`flowers.md`, `loveyou.md`, `neonbutterfly.md`) and
   `superseded/`.
-- `reference/` — local copies of the iremcnar repos, the envelope image and the user's sea holly photos.
-  Not published, not shipped.
+- `reference/` — local copies of the iremcnar repos, the envelope image, the user's sea holly photos and
+  the downloaded sound packs (`audio-sources/`). Not published, not shipped.
 
 ## References
 Style references are three generative-art programs by iremcnar.
@@ -73,9 +77,12 @@ Style references are three generative-art programs by iremcnar.
   buttons, hitboxes, events and state.
 - Builds: the app is `dist\LetterToEsther\LetterToEsther.exe` (or the zip). `tools/build.py` deletes
   PyInstaller's work folder, whose half-built exe fails with "Failed to load Python DLL".
+- Sound: cues live in `letter/soundtrack.py` (data); the music is generated (`letter/art/music.py`). The
+  packs' licences forbid sharing their raw files, so `reference/audio-sources/` and `assets/sounds/` stay
+  out of git.
 - Ask before:
   - adding dependencies beyond pygame-ce, numpy and pyinstaller;
-  - adding sound;
+  - new sound sources (sound itself was added on request, 2026-11-01);
   - commits and pushes;
   - shipping any iremcnar code.
 - Never: network access at runtime; claiming a test that only read source; contradictory docs.

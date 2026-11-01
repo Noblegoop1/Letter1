@@ -58,14 +58,14 @@ _SLOW = 0.35                # share of the run speed while stumbling
 _FLASHES = ((0.08, 0.16), (0.30, 0.38))     # pointer hidden in these windows of a stumble: two flashes
 _DIP = 12.0                 # px the pointer sinks into a ground gap it didn't jump
 _BRAKE = 50.0               # px/s^2 the scrolling slows at as the course ends
-_FIRST = 3.5                # s before the first obstacle reaches the pointer
+_FIRST = 2.5                # s before the first obstacle reaches the pointer
 _RUNOUT = 2.5               # s of clear ground after the last obstacle
 
 # (name, scroll speed px/s, nominal seconds, gap range s, NO's left edge on screen, NO's evasion px x/y)
 _PHASES = (
-    ("A", 105.0, 20.0, (2.6, 3.3), 180.0, (8.0, 4.0)),
-    ("B", 118.0, 45.0, (1.5, 2.3), 194.0, (14.0, 12.0)),
-    ("C", 125.0, 25.0, (1.9, 2.6), 152.0, (10.0, 8.0)),
+    ("A", 105.0, 4.5, (2.2, 2.8), 180.0, (8.0, 4.0)),      # a short game (user, 2026-11-01): about 20 s
+    ("B", 118.0, 8.5, (1.5, 2.2), 194.0, (14.0, 12.0)),
+    ("C", 125.0, 4.5, (1.8, 2.4), 152.0, (10.0, 8.0)),
 )
 
 # --- the NO button (the scene draws the envelope's art into this rect) ----------------------------
@@ -208,6 +208,7 @@ class Chase:
         self._move_t = [m[0] for m in self._moves]
         self.t = 0.0
         self.cornered = False
+        self.jumps = self.stumbles = 0   # counted for the scene's sounds
         self._acc = 0.0
         self._cam = 0.0             # px the world has scrolled
         self._v = _PHASES[0][1]
@@ -378,6 +379,7 @@ class Chase:
 
         if self._buf > 0 and self._jump is None and self._off <= _COYOTE:
             self._jump, self._buf, self._off = 0.0, 0.0, 0.0
+            self.jumps += 1
             self._hint_gone = True
         self._buf = max(0.0, self._buf - STEP)
         if self._jump is not None:
@@ -442,6 +444,7 @@ class Chase:
 
     def _stumble(self):
         self._trip = self.t
+        self.stumbles += 1
         self._bonus = min(_LEAD_MAX, self._bonus + _LEAD_BONUS)
         rng = self._rng
         x, y = self._cam + self._px + _BOX[0] + _BOX[2], self._py + 36      # knocked off its front

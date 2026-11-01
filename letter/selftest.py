@@ -60,12 +60,12 @@ DATE_NO = INVITATION + [
     (FACE + duration("face") + 1.0, "expect", "black"),
 ]
 
-# --- NO: four NOs, the shatter and escape, a chase played without a single jump (the course always ends,
-# in under 130 s), the catch, the ending, and black for good ---------------------------------------------
+# --- NO: four NOs, the shatter and escape, a chase played with one jump (the course always ends, in
+# under 30 s even without jumping), the catch, the ending, and black for good ---------------------------------------------
 NO = 3.0
 NO_4 = NO + 3.0                             # each NO waits out the previous beat's input lock
 CHASE = NO_4 + duration("no-4")
-CORNERED = CHASE + 131.0                    # SPEC C2: under 130 s even without jumping
+CORNERED = CHASE + 30.0                     # SPEC C2: under 30 s even without jumping
 GLITCH = CORNERED + 0.5
 
 NO_PLAN = [

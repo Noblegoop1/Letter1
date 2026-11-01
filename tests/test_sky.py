@@ -8,6 +8,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from letter.art import sky  # noqa: E402
+from letter.engine import audio  # noqa: E402
 
 S = sky.S
 SKY = sky.Sky()   # one shared instance: building one takes ~0.1 s
@@ -128,6 +129,10 @@ class CloudTests(unittest.TestCase):
 
 class BudgetTests(unittest.TestCase):
     QUIET_COPY_MS = 0.2   # one full 640 x 640 x 3 canvas copy on this PC when it is otherwise idle
+
+    @classmethod
+    def setUpClass(cls):
+        audio.wait_for_music()   # an earlier test's app may still be making music: time on a quiet machine
 
     def test_render_fits_the_frame_budget(self):
         """Sky <= 2.5 ms per frame on this PC (best of many short runs), steady and while ramping in.

@@ -16,8 +16,8 @@ import pygame
 from letter.art import fireflies
 from letter.engine import glyphs
 
-MESSAGE = "Will you go on a date Tuesday?"
-LINES = ("Will you go on", "a date Tuesday?")
+MESSAGE = "Will you go on a date with me?"
+LINES = ("Will you go on", "a date with me?")
 EM = 48                     # font px of the message: strokes about 6 px, two dots wide
 PITCH = 1.12                # line pitch in em
 SPACING = 3.0               # default px between neighbouring firefly places

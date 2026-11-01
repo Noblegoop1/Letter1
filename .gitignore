@@ -5,3 +5,5 @@ __pycache__/
 build/
 dist/
 *.spec
+# Sounds cut from licensed packs: in the build, never in git (SPEC §21; tools/sounds.py makes them).
+assets/sounds/

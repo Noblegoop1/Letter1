@@ -1,7 +1,8 @@
 # Implementation Plan: "To Esther" desktop app
 
 Spec: `SPEC.md` v3 (approved 2026-10-31). Modules: `CAPABILITY-MAP.md`. Stack: `docs/adr/0001-desktop-stack.md`.
-Progress (2026-11-01): gates G1–G5 built and tested; G6 release in progress (`tasks/todo.md`).
+Progress (2026-11-01): gates G1–G5 and G7 built and tested; G8 sound (SPEC §21) built; G6 release checks
+repeat on each new build (`tasks/todo.md`).
 
 ## Approach
 - **Gates in order (SPEC §19).** Each gate ends with unit tests, the headless self-test and screenshots

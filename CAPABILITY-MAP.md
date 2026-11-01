@@ -19,6 +19,7 @@ per-module spec files. The web-era map is in `docs/superseded/web/`.
 | `no-route` | Three questions, earthquake, swap, heart shatter, message, auto-open, NO escapes | `buttons`, `letter`, `quality` | §11 | G5 |
 | `chase` | 320 × 320 ASCII runner: the red mouse pointer, obstacles, scripted fair course, recovery | `no-route` | §12 | G5 |
 | `ending` | Cornered button, proximity shake, glitch, dissolve, face, single tear, permanent black | `chase` | §13 | G5 |
+| `sound` | The audio engine (`letter/engine/audio.py`), the cue sheet (`letter/soundtrack.py`), procedural music (`letter/art/music.py`), `tools/sounds.py` and `tools/listen.py` | `app-shell`, every scene (hooks only) | §21 | G8 |
 
 Build order: `app-shell` + `release` skeleton → `letter`, `buttons` → `yes-reveal` → `night` → `flower` →
 `fireflies` → `quality` → **gate** → `no-route` → `chase` → `ending` → `release` (final).

@@ -31,7 +31,7 @@ def flower_ink():
 class Message(unittest.TestCase):
     def test_text(self):
         self.assertEqual(" ".join(inv.LINES), inv.MESSAGE)
-        self.assertEqual(inv.MESSAGE, "Will you go on a date Tuesday?")
+        self.assertEqual(inv.MESSAGE, "Will you go on a date with me?")
 
     def test_cells_sit_in_the_box_and_are_cached(self):
         p = inv.cells()

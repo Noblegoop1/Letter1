@@ -78,6 +78,7 @@ class NightScene(Scene):
         self.lean, self.pointer = 0.0, None
         self.hover = {name: 0.0 for name in CHOICES}   # the invitation's buttons, smoothed 0..1
         self.focus = None
+        self.over = None                    # the invitation's button under the pointer or focus, for its tick
         self.state = (0.0, 0.0, 0.0, 0.0)   # grow, bloom, glow, bend
         self.resize(app.size)
 
@@ -174,11 +175,16 @@ class NightScene(Scene):
             self.lean = approach(self.lean, target, dt, LEAN_TAU)
         if phase in FLYING and dt > 0:
             self.flies.update(dt, t, wind=meadow.wind, attract=self.flower.head(grow, bloom, bend))
+        lit = None
         for name in CHOICES:   # the invitation's buttons light up under the pointer (or keyboard focus)
             over = phase == "invite" and (self.focus == name or (self.pointer is not None and
                                                                  self._choice_at(self.pointer) == name))
+            lit = name if over else lit
             if dt > 0:
                 self.hover[name] = approach(self.hover[name], 1.0 if over else 0.0, dt, HOVER_TAU)
+        if lit is not None and lit != self.over:
+            self.app.audio.play("hover")
+        self.over = lit
 
     # --- drawing -----------------------------------------------------------------------------------
     def _seed(self, c, e, t):

@@ -10,6 +10,7 @@ sys.path.insert(0, ROOT)
 import numpy as np
 
 from letter.art import meadow
+from letter.engine import audio
 
 NIGHT = np.array([7, 10, 20], np.float32) / 255.0
 LIGHT = (320.0, 470.0, 1.0)
@@ -55,6 +56,7 @@ class WindTest(unittest.TestCase):
 class MeadowTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        audio.wait_for_music()   # time the budgets on a quiet machine
         cls.m = meadow.Meadow()
 
     def render(self, t=0.0, emerge=1.0, light=None, front=True):
