@@ -1,7 +1,7 @@
 # Capability Map: "To Esther" desktop app
 
-Status: **APPROVED (2026-10-31).** This is the module index. Progress (2026-11-01): G1–G5 built and tested;
-G6 (release) in progress. Per-requirement status is in `tasks/todo.md`.
+Status: **APPROVED (2026-10-31).** This is the module index. Progress (2026-11-01): G1–G5 and G7 (invitation
+finale, chase redesign) built and tested; G6 (release) in progress. Per-requirement status is in `tasks/todo.md`.
 Each module's requirements and acceptance IDs are the `SPEC.md` section listed; there are no separate
 per-module spec files. The web-era map is in `docs/superseded/web/`.
 

@@ -31,6 +31,35 @@ YES_PLAN = [
     (BLOOMED + 4.0, "expect", "bloomed"),   # fireflies arriving
 ]
 
+# --- the invitation: the fireflies wander, gather into the question, its buttons fade in ------------------
+GATHER = BLOOMED + duration("bloomed")
+INVITE = GATHER + duration("gather")
+CHOICE = INVITE + duration("invite") + 0.5
+INVITATION = YES_PLAN + [
+    (GATHER - 1.0, "expect", "bloomed"),    # still wandering: the gathering waits for config.WANDER
+    (GATHER + 0.2, "expect", "gather"),
+    (INVITE + 0.2, "expect", "invite"),
+    (INVITE + 0.3, "click", "date-no"),     # its buttons are still fading in: nothing happens yet
+    (INVITE + 0.4, "expect", "invite"),
+    (CHOICE - 0.3, "move", "date-yes"),
+]
+JOY = CHOICE + duration("farewell")
+DATE_YES = INVITATION + [
+    (CHOICE, "click", "date-yes"),
+    (CHOICE + 0.1, "expect", "farewell"),
+    (CHOICE + 0.2, "click", "date-no"),     # locked: the decision is made
+    (CHOICE + 0.3, "expect", "farewell"),
+    (JOY + 0.3, "expect", "joy"),
+    (JOY + duration("joy") + 0.5, "expect", "exit"),   # the app closes itself (the run stops there)
+]
+FACE = CHOICE + duration("letgo")
+DATE_NO = INVITATION + [
+    (CHOICE, "click", "date-no"),
+    (CHOICE + 0.1, "expect", "letgo"),
+    (FACE + 0.5, "expect", "face"),         # straight to the crying face: no chase, no glitch
+    (FACE + duration("face") + 1.0, "expect", "black"),
+]
+
 # --- NO: four NOs, the shatter and escape, a chase played without a single jump (the course always ends,
 # in under 130 s), the catch, the ending, and black for good ---------------------------------------------
 NO = 3.0
@@ -63,4 +92,4 @@ NO_PLAN = [
     (GLITCH + duration("glitch") + duration("face") + 2.5, "expect", "black"),
 ]
 
-PLANS = {"yes": YES_PLAN, "no": NO_PLAN}
+PLANS = {"yes, then yes": DATE_YES, "yes, then no": DATE_NO, "no": NO_PLAN}

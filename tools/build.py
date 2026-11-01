@@ -47,6 +47,9 @@ def main():
         "--distpath", DIST, "--workpath", os.path.join(BUILD, "pyinstaller"), "--specpath", BUILD,
         os.path.join(ROOT, "letter", "__main__.py"),
     ], check=True)
+    # PyInstaller's work folder holds an unfinished LetterToEsther.exe with no _internal/ beside it; opening
+    # that one fails with "Failed to load Python DLL". Every build starts clean (--clean), so drop it.
+    shutil.rmtree(os.path.join(BUILD, "pyinstaller"), ignore_errors=True)
     out = os.path.join(DIST, NAME)
     shutil.copy(os.path.join(ROOT, "THIRD_PARTY_NOTICES.md"), out)
     archive = os.path.join(DIST, NAME + "-win64.zip")

@@ -1,218 +1,251 @@
 """The chase game's pure core (SPEC §12, §13 step 1).
 
-The player, a red ASCII mouse pointer (the arrow cursor), glides right after the fleeing NO button along
-an ASCII ground; Space jumps, and nothing else does anything. The course is a seeded, scripted list of obstacle groups in three phases of rising
-pace, spaced so it is always fair; a collision is a short stumble, never a game over. When the course
-ends the camera eases to a stop, NO backs into a wall at the right and `cornered` turns True; the scene
-takes over from there (pointer tremble, click, ending).
+The player's mouse pointer, a big red ASCII arrow cursor, chases the NO button through a side-scrolling
+runner: a ground line low on the canvas, the pointer lower left, block walls arriving from the right, the
+NO button floating ahead. Space jumps and nothing else does; the mouse steers the pointer inside its lane.
+The course is a seeded script in three phases, always fair; a collision is a short stumble, never a game
+over. When the course ends the scrolling eases to a stop with NO trapped against an end wall, `cornered`
+turns True and the pointer follows the mouse freely; the scene takes over (tremble, click, ending).
 
-World units are logical px of the SIZE x SIZE canvas; x grows to the right and the camera follows the
-mouse. Physics runs on fixed STEP steps from an accumulator, so the course and its timings are the same at
-any frame rate; picture() interpolates between the last two steps. Pure Python: no pygame.
+Logical px of the SIZE x SIZE canvas, y down; the world scrolls by `cam` px. Physics runs on fixed STEP
+steps from an accumulator, so the course and its timings are the same at any frame rate; picture(),
+no_rect() and pointer_rect() interpolate between the last two steps. The NO button is not in picture():
+the scene draws the envelope's button art into no_rect(). Pure Python: no pygame.
 """
 import math
 import random
 from bisect import bisect_right
 
-from letter.engine.timeline import approach, hash32
+from letter.engine.timeline import approach, clamp, hash32, smoothstep
 
 SIZE = 320                  # logical canvas is SIZE x SIZE px
 CELL = (8, 12)              # logical px per glyph cell (glyphs are drawn from their cell's top-left)
 STEP = 1 / 120              # fixed simulation step
 
 _CW, _CH = CELL
-# The 13 px font's ink sits about 2..16 px below a glyph's top. Everything stands on _FOOT, where a
-# standing glyph's ink ends; the ground's surface ink starts just below it.
-_GY = 240                   # top of the ground's surface row
-_FOOT = _GY + 6
-_HY = 166                   # top of the horizon row
-_PARALLAX = 0.3             # horizon scroll per px of camera
-_MOUSE_X = 40               # mouse pointer's left edge on screen while the camera follows it
-_WALL_X = 288               # wall's left edge on screen once the camera has stopped
-_WALL_ROWS = 9              # above the ground
-_CAM_L = 240.0              # the camera eases to a stop over the mouse's last _CAM_L px, so the mouse
-                            # walks _CAM_L / 2 on across the screen and stops a little way off NO
+_CAP = 6                    # px from a '+' glyph's top to its ink (13 px bold, the same at every scale)
 _MAX_DT = 0.25              # a longer hitch plays as this much (no catch-up spiral)
-_HINT = ("[ SPACE ]", 124, 108)
+
+# --- layout (screen px) ---------------------------------------------------------------------------
+_GROUND = 252               # things stand here: the ground line's ink starts at this y
+_RIDGE = 214                # the distant hills' foot (ink y); they rise up to _RIDGE_H above it
+_RIDGE_H = 16
+_PARALLAX = 0.25            # the hills scroll this much per px of ground
+_LANE = (16.0, 112.0)       # the pointer's tip x while running
+_HOME = 40.0                # ... until the mouse moves
+_STEER_TAU, _FREE_TAU = 0.08, 0.05     # s: the pointer's follow of the mouse, running and cornered
+_WALL_X = 256               # the end wall's left edge once the scrolling has stopped
+_HINT = ("[ SPACE ]", 124, 52)
 _HINT_FROM = 0.6            # s; then shown until the first jump or the first obstacle is passed
 
-_JUMP_T, _JUMP_H = 0.8, 60.0    # fixed jump duration (s) and height (px)
-_COYOTE, _BUFFER = 0.1, 0.15    # a late jump still works this long after leaving the ground; an early
-                                # press is remembered this long
+# --- the pointer: the classic arrow cursor, outline and dotted fill, its tip at (0, 0) -------------
+_ARROW_ROWS = ("|\\", "|.\\", "|..\\", "|...\\", "|....\\", "|_.___\\", "  \\..\\", "   \\__\\")
+_ARROW = tuple((ch, c * 5.0 - 3, r * 6.5 - 2) for r, row in enumerate(_ARROW_ROWS)
+               for c, ch in enumerate(row) if ch != " ")
+_PW, _PH = 34.0, 59.5       # tip to the right-most / bottom ink
+_BOX = (4.0, 3.0, 24.0, _PH - 3.0)      # collision box from the tip: forgiving at the wing and the stem
+_HOVER = 2.0                # it glides this far above the ground line
+_TRAIL = ((12, 0.0), (26, 0.37), (40, 0.71))    # speed lines: (y from the tip, phase)
+_TRAIL_FROM = 60.0          # px/s; the speed lines show above this pace
+
+# --- motion ----------------------------------------------------------------------------------------
+_JUMP_T, _JUMP_H = 1.05, 104.0  # fixed jump duration (s) and height (px): a smooth, floaty arc
+_COYOTE, _BUFFER = 0.1, 0.15    # a late jump still works this long after the ground ends; an early press
+                                # is remembered this long
 _REACT = 0.35               # reaction time in the fairness rule: gap >= speed * (jump + reaction)
 _STUMBLE, _GRACE = 0.6, 0.25    # stumble length; then no new stumble for a moment
 _SLOW = 0.35                # share of the run speed while stumbling
 _FLASHES = ((0.08, 0.16), (0.30, 0.38))     # pointer hidden in these windows of a stumble: two flashes
-_LEAD_BONUS, _LEAD_MAX = 24.0, 48.0         # NO's extra lead per stumble, and its cap
-_BRAKE = 80.0               # px/s^2 the mouse slows at as the course ends
+_DIP = 12.0                 # px the pointer sinks into a ground gap it didn't jump
+_BRAKE = 50.0               # px/s^2 the scrolling slows at as the course ends
+_FIRST = 3.5                # s before the first obstacle reaches the pointer
 _RUNOUT = 2.5               # s of clear ground after the last obstacle
-_FIRST = 4.0                # s before the first obstacle reaches the mouse
 
-# (name, run speed px/s, nominal seconds, gap range s, NO's lead px)
+# (name, scroll speed px/s, nominal seconds, gap range s, NO's left edge on screen, NO's evasion px x/y)
 _PHASES = (
-    ("A", 90.0, 20.0, (2.4, 3.2), 184.0),
-    ("B", 104.0, 45.0, (1.35, 2.25), 160.0),
-    ("C", 118.0, 25.0, (1.25, 1.75), 112.0),
+    ("A", 105.0, 20.0, (2.6, 3.3), 180.0, (8.0, 4.0)),
+    ("B", 118.0, 45.0, (1.5, 2.3), 194.0, (14.0, 12.0)),
+    ("C", 125.0, 25.0, (1.9, 2.6), 152.0, (10.0, 8.0)),
 )
 
+# --- the NO button (the scene draws the envelope's art into this rect) ----------------------------
+_NW, _NH = 104.0, 52.0      # a third of the play width; the envelope button's 40 x 11 cells are w/h ~2
+_NY = 124.0                 # its top at rest: its bottom stays above the tallest obstacle
+_NX_MAX = SIZE - _NW - 8.0
+_NO_GAP = 20.0              # it keeps at least this far ahead of the pointer
+_FLOAT_T, _FLOAT_A = 3.2, 8.0   # rise-pause-fall-pause period (s) and height (px); half when cornered
+_LEAD_BONUS, _LEAD_MAX = 14.0, 24.0         # NO's extra lead per stumble, and its cap
 
-def _glyphs(rows, pitch, bottom):
-    """((ch, dx, dy), ...) for rows of text: the last row's glyph top at dy = bottom, rows pitch px apart."""
-    n = len(rows)
-    return tuple((ch, c * _CW, bottom - (n - 1 - r) * pitch)
-                 for r, line in enumerate(rows) for c, ch in enumerate(line) if ch != " ")
-
-
-# The player is a mouse pointer: the classic arrow cursor (outline, # fill, the short stem at the bottom
-# right), 6 cells wide and 7 rows at a 10 px pitch so its edges join up. It glides with its stem tip
-# just above the ground; its hitbox is the arrow's head (forgiving at the stem). Glyph offsets are from
-# its left edge and _FOOT; a shear (px per px of height) leans it.
-_BOX = (8, 32)
-_ARROW = _glyphs(("|\\", "|#\\", "|##\\", "|###\\", "|#/\\_\\", "|/ \\#\\", "    \\/"), 10, -17)
-_TRAIL = (("-", -11, -57), ("=", -13, -45), ("-", -23, -45), ("-", -10, -33))   # faint speed lines
-_TRAIL_FROM = 60.0          # px/s; the speed lines show above this pace
-
-# NO button: a framed box on little feet, 4 cells wide.
-_NW = 4 * _CW
-_NO_TOP = -49               # box's top glyph row, relative to _FOOT
-_NO_BOX = _glyphs((".--.", "|NO|", "'--'"), 12, _NO_TOP + 24)
-_NO_FEET = tuple(_glyphs((f,), 0, -15) for f in (" /\\ ", " |\\ ", " /| "))
-_NO_STAND = _glyphs((" || ",), 0, -15)
-
-# Obstacles: rows (top to bottom, standing on the ground), hitbox x range from their left edge, height px.
+# --- obstacles: block shapes on the 8 x 12 grid, (cell offset, rows up, rows top to bottom) --------
 _KINDS = {
-    "rock": (("o",), (1, 7), 6),
-    "debris": ((",;.",), (2, 22), 5),
-    "barrier": (("|#|",), (3, 21), 9),
-    "stack": (("[#]", "[#]"), (4, 20), 20),
-    "gap": ((), (6, 26), 0),        # 4 missing ground cells: trips you only while you're on the ground
+    "barrier": ((0, 0, ("+--+", "|##|")),),
+    "block": ((0, 0, ("+--+", "|##|", "|##|")),),
+    "wall": ((0, 0, ("+--+", "|##|", "|##|", "|##|")),),
+    "tall": ((0, 0, ("+--+", "|##|", "|##|", "|##|", "|##|")),),
+    "stack": ((0, 0, ("+----+", "|####|")), (1, 2, ("+--+", "|##|"))),
+    "gap": (),              # a missing stretch of ground, _GAP_W wide
 }
-_GAP_W = 32
-_GROUPS = {                         # cleared by one jump: (kind, cell offset)
-    "rocks": (("rock", 0), ("rock", 2)),
-    "rubble": (("debris", 0), ("rock", 3)),
-    "rockbar": (("rock", 0), ("barrier", 2)),
+_GAP_W = 40
+_CLUSTERS = {               # cleared by one jump: (kind, cell offset)
+    "twin": (("barrier", 0), ("barrier", 4)),
+    "step": (("barrier", 0), ("block", 4)),
+    "ditch": (("barrier", 0), ("gap", 5)),
 }
-_A_ORDER = ("rock", "debris", "barrier", "gap", "rock", "barrier", "debris")
-_POOL = {
-    "B": ("rock", "debris", "barrier", "stack", "gap", "rocks", "rubble"),
-    "C": ("rock", "barrier", "stack", "gap", "rocks", "rubble", "rockbar"),
-}
-_ART = {k: _glyphs(rows, _CH, -14) for k, (rows, _, _) in _KINDS.items()}
-_SCATTER = "*'.,`:+"
+_A_ORDER = ("barrier", "block", "barrier", "gap", "block", "wall")
+_POOL = {"B": ("block", "wall", "tall", "stack", "gap", "twin", "step"),
+         "C": ("barrier", "block", "wall", "gap", "twin", "ditch")}
+_SCATTER = "*'.,`+"
 
 
-def _width(kind):
-    return _GAP_W if kind == "gap" else len(_KINDS[kind][0][0]) * _CW
+def _art(blocks):
+    """A kind's glyphs (ch, dx, dy from its left edge and _GROUND), its collision boxes (x0, x1, top: each
+    down to the ground) and its drawn extent (width, top). A box sits inside the drawn ink: 2 px in at the
+    sides, 3 px down from the top."""
+    glyphs, boxes, w, top = [], [], 0, 0
+    for c0, up, rows in blocks:
+        n = len(rows)
+        glyphs += [(ch, (c0 + c) * _CW, -16 - (n - 1 - r + up) * _CH)
+                   for r, row in enumerate(rows) for c, ch in enumerate(row) if ch != " "]
+        ink = -16 - (n - 1 + up) * _CH + _CAP
+        boxes.append(((c0 * _CW) + 2.0, (c0 + len(rows[0])) * _CW - 3.0, ink + 3.0))
+        w, top = max(w, (c0 + len(rows[0])) * _CW), min(top, ink)
+    return tuple(glyphs), tuple(boxes), (w if blocks else _GAP_W, top)
+
+
+_ART = {k: _art(blocks) for k, blocks in _KINDS.items()}
+_FRONT = _HOME + _BOX[0] + _BOX[2]      # the pointer box's right edge on screen, at home
 
 
 def _parts(kind):
-    """[(dx px, single kind)] for a group or a single obstacle, and its width."""
-    parts = [(c * _CW, k) for k, c in _GROUPS.get(kind, ((kind, 0),))]
-    return parts, max(dx + _width(k) for dx, k in parts)
+    """[(dx px, single kind)] for a cluster or a single obstacle, and its drawn width."""
+    parts = [(c * _CW, k) for k, c in _CLUSTERS.get(kind, ((kind, 0),))]
+    return parts, max(dx + _ART[k][2][0] for dx, k in parts)
 
 
 def _build(seed):
-    """-> (groups, phase starts, mouse end x). groups: (x0, x1, phase, ((x, kind), ...)) sorted by x;
-    phase starts are mouse-box-front x where phases B and C begin; gaps use the speed of their phase."""
+    """-> (groups, phase starts, scroll end). groups: (x0, x1, phase, kind, ((x, single kind), ...)) in
+    world px, sorted; phase starts are scroll positions where B and C begin; the course ends (the scrolling
+    stops) at the scroll end. Gaps between groups use their phase's speed, so every one is fair."""
     rng = random.Random(seed)
     groups, starts = [], [-math.inf]
-    ref = _MOUSE_X + _BOX[1]        # x the next gap is measured from: the last group's end
+    ref = _FRONT                    # where the next gap is measured from: the last group's end
     t = t_end = 0.0
-    for p, (name, v, dur, (lo, hi), _) in enumerate(_PHASES):
+    for p, (name, v, dur, (lo, hi), *_) in enumerate(_PHASES):
         t_end += dur
-        k, last = 0, None
+        deck, k = [], 0
         while True:
             if name == "A":
                 if k == len(_A_ORDER):
                     break
                 kind = _A_ORDER[k]
             else:
-                kind = rng.choice([c for c in _POOL[name] if c != last])
+                if not deck:        # every kind once per shuffled deck, never twice in a row
+                    deck = list(_POOL[name])
+                    rng.shuffle(deck)
+                    if deck[-1] == groups[-1][3]:
+                        deck.reverse()
+                kind = deck.pop()
             g = _FIRST if not groups else rng.uniform(lo, hi)
             parts, w = _parts(kind)
             x = math.ceil((ref + v * g) / _CW) * _CW         # on the ground's cell grid
             if t + (x - ref + w) / v > t_end:
                 break
             if k == 0 and p:
-                starts.append((ref + x) / 2)
+                starts.append((ref + x) / 2 - _FRONT)
             t += (x - ref + w) / v
-            groups.append((x, x + w, p, tuple((x + dx, kk) for dx, kk in parts)))
-            ref, last, k = x + w, kind, k + 1
-    end = math.ceil((ref + _PHASES[-1][1] * _RUNOUT - _BOX[1]) / _CW) * _CW   # camera stops on the grid
-    return groups, starts, float(end)
+            groups.append((x, x + w, p, kind, tuple((x + dx, kk) for dx, kk in parts)))
+            ref, k = x + w, k + 1
+    return groups, starts, ref + _PHASES[-1][1] * _RUNOUT - _FRONT
 
 
-def _ground(seed, groups, cols, wall_col):
-    """Ground rows over the whole world: a `= - ~ _` surface, then sparser specks; gaps cut a pit."""
-    rows = []
-    for r, (chars, keep) in enumerate((("==-=~==_-=", 100), ("-.~,. -", 38), (".,", 18), (".", 8))):
-        row = []
-        for k in range(cols):
-            h = hash32(k // (2 if r == 0 else 1), r, seed)
-            row.append(chars[h % len(chars)] if (h >> 8) % 100 < keep and k < wall_col else " ")
-        rows.append(row)
-    n = _GAP_W // _CW
-    for _, _, _, parts in groups:
-        for x, kind in parts:
-            if kind == "gap":
-                c = x // _CW
-                for i in range(n):
-                    rows[0][c + i] = rows[2][c + i] = " "
-                    rows[1][c + i] = "\\" if i == 0 else "/" if i == n - 1 else " "
-    return ["".join(row) for row in rows]
-
-
-def _horizon(seed, cols=120):
-    """One periodic row of low distant hills, at least cols cells long."""
+def _ridge(seed, cols=160):
+    """Distant hills, periodic: px above _RIDGE per 6 px column, a smooth rolling profile."""
     rng = random.Random(seed + 101)
-    feats = ("_.-~-._", "_.--._", "_.-._", "__", "___", "_.", "____", "  ", "_ _")
-    row = ""
-    while len(row) < cols:
-        row += rng.choice(feats)
-    return row
+    a, b = rng.uniform(0, 6.28), rng.uniform(0, 6.28)
+    return [round(_RIDGE_H * max(0.0, 0.5 + 0.4 * math.sin(2 * math.pi * k / cols * 3 + a)
+                                 + 0.3 * math.sin(2 * math.pi * k / cols * 7 + b))) for k in range(cols)]
+
+
+def _float(t):
+    """NO's hover, 0 (bottom) to 1 (top): rises, pauses, falls, pauses."""
+    u = t % _FLOAT_T / _FLOAT_T
+    if u < 0.375:
+        return smoothstep(0.0, 0.375, u)
+    if u < 0.5:
+        return 1.0
+    return 1.0 - smoothstep(0.5, 0.875, u)
+
+
+def _wall():
+    """The end wall: courses of block bricks (a seam row, two body rows, every other course offset half a
+    brick) from the ground up past NO, with a straight left face, running off the right edge."""
+    rows, out = 17, []
+    for r in range(rows):
+        course, k = divmod(r, 3)
+        for c in range((SIZE - _WALL_X) // _CW + 1):
+            joint = c == 0 or (c + 2 * (course % 2)) % 4 == 0
+            out.append((("+" if joint else "-") if k == 0 else ("|" if joint else "#"), c * _CW,
+                        -16 - (rows - 1 - r) * _CH))
+    return tuple(out)
+
+
+_WALL = _wall()
 
 
 class Chase:
     def __init__(self, seed=3):
         self._groups, self._starts, self._end = _build(seed)
         self._x0s = [g[0] for g in self._groups]
-        self._cam_end = self._end - _MOUSE_X - _CAM_L / 2
-        self._wall = self._cam_end + _WALL_X
-        self._rows = _ground(seed, self._groups, int(self._cam_end + SIZE) // _CW + 2, int(self._wall) // _CW)
-        self._hills = _horizon(seed)
-        self._rng = random.Random(seed * 7919 + 1)
+        self._out = self._groups[-1][1] - _HOME - _BOX[0]       # scroll where the last group is behind
+        self._ground = self._ground_rows(seed, int(self._end + SIZE) // _CW + 2)
+        self._hills = _ridge(seed)
+        rng = random.Random(seed * 7919 + 1)
+        self._rng = rng
+        t, self._moves = 0.0, [(0.0, 0.0, 0.0)]
+        while t < 400:              # NO's evasion: (start s, x, y) in -1..1, eased to, then held
+            t += rng.uniform(1.6, 3.2)
+            self._moves.append((t, rng.uniform(-1, 1), rng.uniform(-1, 0.4)))
+        self._move_t = [m[0] for m in self._moves]
         self.t = 0.0
         self.cornered = False
         self._acc = 0.0
-        self._mx = float(_MOUSE_X)      # mouse sprite's left edge, world px
+        self._cam = 0.0             # px the world has scrolled
         self._v = _PHASES[0][1]
-        self._h = 0.0                   # feet above the ground, px
-        self._jump = None               # seconds into the current jump
-        self._off = 0.0                 # seconds on the ground over a gap
-        self._buf = 0.0                 # seconds the last press stays remembered
-        self._trip = -math.inf          # when the last stumble began
-        self._spent = set()             # obstacles already hit
-        self._next = 0                  # first group the mouse hasn't passed
-        self._lead = _PHASES[0][4]      # NO's left edge minus the mouse's, px
-        self._bonus = 0.0
-        self._bits = []                 # stumble scatter: (t0, x, y, vx, vy, ch)
+        self._px, self._py = _HOME, _GROUND - _HOVER - _PH      # the pointer's tip on screen
+        self._aim = (None, None)
+        self._h = 0.0               # jump height, px
+        self._dip = 0.0             # px sunk into a gap
+        self._jump = None           # seconds into the current jump
+        self._off = 0.0             # seconds on the ground over a gap
+        self._buf = 0.0             # seconds the last press stays remembered
+        self._trip = -math.inf      # when the last stumble began
+        self._spent = set()         # obstacles already hit
+        self._next = 0              # first group the pointer hasn't passed
+        self._bonus = 0.0           # NO's extra lead after stumbles
+        self._nx, self._ny = _PHASES[0][4], _NY     # NO's top-left, before its float
+        self._na = _FLOAT_A
+        self._bits = []             # stumble scatter: (t0, world x, y, vx, vy, ch)
         self._hint_gone = False
         self._prev = self._state()
 
     # --- public -------------------------------------------------------------------------------------
     @property
     def phase(self):
-        return "cornered" if self.cornered else _PHASES[self._phase_index(self._mx)][0]
+        return "cornered" if self.cornered else _PHASES[self._phase_index(self._cam)][0]
 
     @property
     def progress(self):
-        return min(1.0, (self._mx - _MOUSE_X) / (self._end - _MOUSE_X))
+        return min(1.0, self._cam / self._end)
 
     def press(self):
         """Space went down."""
         if not self.cornered:
             self._buf = _BUFFER
+
+    def aim(self, x, y=None):
+        """The real mouse in logical px, or None when it leaves the window. Running, x steers the pointer
+        inside its lane; cornered, the pointer's tip follows (x, y)."""
+        self._aim = (x, None if x is None else y)
 
     def update(self, dt):
         """Advance by dt real seconds in fixed STEP steps."""
@@ -222,116 +255,126 @@ class Chase:
             self._prev = self._state()
             self._step()
 
-    def picture(self, shake=(0.0, 0.0)):
-        """Every glyph to draw this frame, back to front: [(ch, role, x, y)], glyph top-left in logical px."""
-        t, mx, h, lead = self._lerp()
-        cam = self._cam(mx)
+    def picture(self):
+        """Every glyph to draw this frame, back to front: [(ch, role, x, y)], glyph top-left in logical px.
+        The world first (h hills, g ground, o obstacles, w end wall, t hint), then the pointer (r speed
+        lines, m arrow) and x stumble scatter. NO is not in it: see no_rect()."""
+        t, cam, px, py, nx, ny = self._lerp()
+        i = bisect_right(self._x0s, cam + SIZE)
+        near = [(x - cam, kind) for x0, x1, _, _, parts in self._groups[max(0, i - 6):i] if x1 > cam
+                for x, kind in parts]
+        # the hills pass behind NO, the obstacles and the arrow (its right edge slants out with height)
+        fronts = [(nx, ny, nx + _NW, ny + _NH), (self._end + _WALL_X - cam, 0, SIZE, _GROUND)]
+        fronts += [(x, _GROUND + _ART[k][2][1], x + _ART[k][2][0], _GROUND) for x, k in near if k != "gap"]
         out = []
         off = cam * _PARALLAX
-        k0 = math.floor(off / _CW)
-        for k in range(k0, k0 + SIZE // _CW + 1):
-            ch = self._hills[k % len(self._hills)]
-            if ch != " ":
-                out.append((ch, "h", k * _CW - off, _HY))
+        k0 = math.floor(off / 6)
+        for k in range(k0, k0 + SIZE // 6 + 2):
+            x, y = k * 6 - off, _RIDGE - self._hills[k % len(self._hills)]
+            dy = y - py
+            if 0 <= dy <= _PH and px - 2 < x + 7 and x < px + min(_PW, 0.8 * dy + 8):
+                continue
+            if not any(a < x + 7 and x < c and b < y + 2 and y < d for a, b, c, d in fronts):
+                out.append(("_", "h", x, y - 14))
+        line, rows = self._ground
+        k0 = max(0, math.floor(cam / 6))
+        out.extend(("_", "g", k * 6 - cam, _GROUND - 14) for k in range(k0, min(len(line), k0 + SIZE // 6 + 2))
+                   if line[k])
         k0 = max(0, math.floor(cam / _CW))
-        for r, row in enumerate(self._rows):
-            for k in range(k0, min(len(row), k0 + SIZE // _CW + 1)):
-                if row[k] != " ":
-                    out.append((row[k], "g", k * _CW - cam, _GY + r * _CH))
-        i = bisect_right(self._x0s, cam + SIZE)
-        for _, x1, _, parts in self._groups[max(0, i - 6):i]:
-            if x1 > cam:
-                for x, kind in parts:
-                    out.extend((ch, "o", x + dx - cam, _FOOT + dy) for ch, dx, dy in _ART[kind])
-        wx = self._wall - cam
+        for r, row in enumerate(rows):
+            out.extend((row[k], "g", k * _CW - cam, _GROUND - 3 + r * _CH)
+                       for k in range(k0, min(len(row), k0 + SIZE // _CW + 1)) if row[k] != " ")
+        for x, kind in near:
+            out.extend((ch, "o", x + dx, _GROUND + dy) for ch, dx, dy in _ART[kind][0])
+        wx = self._end + _WALL_X - cam
         if wx < SIZE:
-            for r in range(_WALL_ROWS + 2):
-                y = _FOOT - 14 - (_WALL_ROWS - 1 - r) * _CH
-                out.append(("." if r == 0 else "|", "w", wx, y))
-                for c in range(1, (SIZE - _WALL_X) // _CW):
-                    out.append(("_" if r == 0 else "#=="[(c + r) % 3], "w", wx + c * _CW, y))
-        nx, ny, pinned = self._no(mx, lead, cam)
-        sx, sy = shake if self.cornered else (0.0, 0.0)
-        feet = _NO_STAND if pinned else _NO_FEET[int(nx + cam) // 9 % 3]
-        out.extend((ch, "n", nx + dx + sx, ny + dy + sy) for ch, dx, dy in _NO_BOX + feet)
-        e = t - self._trip
-        if not any(a <= e < b for a, b in _FLASHES):
-            out.extend((ch, role, mx - cam + dx, _FOOT + dy - h) for ch, role, dx, dy in self._pointer(t, e))
-        for t0, x, y, vx, vy, ch in self._bits:
-            e = t - t0
-            by = y + vy * e + 300 * e * e
-            if 0 <= e < _STUMBLE and by < _FOOT - 8:
-                out.append((ch, "x", x + vx * e - cam, by))
+            out.extend((ch, "w", wx + dx, _GROUND + dy) for ch, dx, dy in _WALL)
         if t >= _HINT_FROM and not self._hint_gone:
             text, x, y = _HINT
             out.extend((ch, "t", x + c * _CW, y) for c, ch in enumerate(text) if ch != " ")
+        e = t - self._trip
+        if not any(a <= e < b for a, b in _FLASHES):
+            out.extend(self._pointer(t, px, py))
+        for t0, x, y, vx, vy, ch in self._bits:
+            e = t - t0
+            by = y + vy * e + 300 * e * e
+            if 0 <= e < _STUMBLE and by < _GROUND - 6:
+                out.append((ch, "x", x + vx * e - cam, by))
         return out
 
     def no_rect(self):
-        """(x, y, w, h) logical px around the NO button's glyph cells now (box and feet), without shake."""
-        _, mx, _, lead = self._lerp()
-        nx, ny, _ = self._no(mx, lead, self._cam(mx))
-        return nx, ny + _NO_TOP, _NW, -_NO_TOP
+        """(x, y, w, h) logical px of the floating NO button now: its float and evasion included."""
+        *_, nx, ny = self._lerp()
+        return nx, ny, _NW, _NH
+
+    def pointer_rect(self):
+        """(x, y, w, h) logical px of the pointer's collision box now."""
+        _, _, px, py, _, _ = self._lerp()
+        return px + _BOX[0], py + _BOX[1], _BOX[2], _BOX[3]
 
     # --- private ------------------------------------------------------------------------------------
     def _state(self):
-        return self.t, self._mx, self._h, self._lead
+        return self.t, self._cam, self._px, self._py, self._nx, self._ny - self._na * _float(self.t)
 
     def _lerp(self):
         a = min(1.0, max(0.0, self._acc / STEP))
         return tuple(p + (c - p) * a for p, c in zip(self._prev, self._state()))
 
-    def _phase_index(self, mx):
-        return bisect_right(self._starts, mx + _BOX[1]) - 1
+    def _phase_index(self, cam):
+        return bisect_right(self._starts, cam) - 1
 
-    def _cam(self, mx):
-        """Camera follows the mouse, then eases to a stop (C1-smooth) over the mouse's last _CAM_L px."""
-        u0 = self._end - _MOUSE_X - _CAM_L
-        s = min(1.0, (mx - _MOUSE_X - u0) / _CAM_L)
-        return mx - _MOUSE_X if s <= 0 else u0 + _CAM_L * (s - s * s / 2)
+    def _ground_rows(self, seed, cells):
+        """The ground line (a '_' every 6 px, overlapping into one solid line: True where drawn) and three
+        rows of sparse specks under it (8 px cells), over the whole world. A gap cuts a pit with walls."""
+        line = [True] * (cells * _CW // 6)
+        rows = [[chars[hash32(k, r, seed) % len(chars)] if (hash32(k, r, seed) >> 8) % 100 < keep else " "
+                 for k in range(cells)] for r, (chars, keep) in enumerate(((".-,.", 30), (".,", 18), (".", 9)))]
+        for _, _, _, _, parts in self._groups:
+            for x, kind in parts:
+                if kind == "gap":
+                    for k in range(math.ceil((x - 6) / 6), math.ceil((x + _GAP_W) / 6)):
+                        line[k] = False
+                    for k in range(x // _CW, (x + _GAP_W) // _CW):
+                        rows[0][k] = rows[1][k] = " "
+                    rows[0][x // _CW - 1] = rows[0][(x + _GAP_W) // _CW] = "|"
+        return line, ["".join(r) for r in rows]
 
-    def _no(self, mx, lead, cam):
-        """NO's screen x and _FOOT-based y (glyph offsets add to these), and whether it is at the wall."""
-        x = mx + lead
-        pinned = x >= self._wall - _NW
-        x = min(x, self._wall - _NW)
-        c = x + _NW / 2
-        hop = 0.0
-        i = bisect_right(self._x0s, c)
-        for x0, x1, _, parts in self._groups[max(0, i - 2):i + 1]:
-            d = c - (x0 + x1) / 2
-            reach = (x1 - x0 + _NW) / 2 + 10
-            if abs(d) < reach:
-                top = max(_KINDS[k][2] for _, k in parts)
-                hop = max(hop, (top + 14 if top else 8) * (1 - (d / reach) ** 2))
-        bob = 0.0 if pinned else 2.0 * abs(math.sin(math.pi * x / 18))
-        return min(x - cam, SIZE - _NW - _CW), _FOOT - hop - bob, pinned
-
-    def _pointer(self, t, e):
-        """The pointer's glyphs (ch, role, dx, dy) for this moment: it leans into its glide with a slight
-        bob, tilts back rising and forward falling in a jump, and wobbles through a stumble."""
-        bob = -1.5 * (1 + math.sin(2 * math.pi * 2.1 * t))
-        if e < _STUMBLE:
-            shear = 0.16 * math.sin(2 * math.pi * 5 * e) * (1 - e / _STUMBLE)
+    def _pointer(self, t, px, py):
+        """The arrow's glyphs: no legs, no run cycle. It leans into its glide, tilts back rising and
+        forward falling in a jump, and trails speed lines while it runs fast."""
+        if self.cornered:
+            shear = 0.0
         elif self._jump is not None:
-            shear, bob = -0.08 * (1 - 2 * self._jump / _JUMP_T), 0.0
+            shear = -0.07 * (1 - 2 * self._jump / _JUMP_T)
         else:
-            shear = 0.035 * self._v / _PHASES[-1][1] + 0.012 * math.sin(2 * math.pi * 0.9 * t)
-        out = [(ch, "r", dx, dy + bob) for ch, dx, dy in _TRAIL] if self._v > _TRAIL_FROM else []
-        out += [(ch, "m", dx - shear * (dy + 17), dy + bob) for ch, dx, dy in _ARROW]
+            shear = 0.04 + 0.01 * math.sin(2 * math.pi * 0.7 * t)
+        out = []
+        if not self.cornered and self._v > _TRAIL_FROM:
+            for y, ph in _TRAIL:
+                u = (t * 2.2 + ph) % 1.0
+                out += [("-", "r", px - 10 - 22 * u - d, py + y) for d in (0, 5)]
+        out.extend((ch, "m", px + dx + shear * (_PH - dy), py + dy) for ch, dx, dy in _ARROW)
         return out
 
     def _step(self):
         self.t += STEP
+        ax, ay = self._aim
         if self.cornered:
+            if ax is not None:
+                self._px = approach(self._px, clamp(ax, 0.0, SIZE - _PW), STEP, _FREE_TAU)
+            if ay is not None:
+                self._py = approach(self._py, clamp(ay, 0.0, SIZE - _PH), STEP, _FREE_TAU)
+            self._move_no(0.0)
             return
-        p = self._phase_index(self._mx)
+        p = self._phase_index(self._cam)
         stumbling = self.t - self._trip < _STUMBLE
         target = _PHASES[p][1] * (_SLOW if stumbling else 1.0)
-        self._v = min(approach(self._v, target, STEP, 0.2), math.sqrt(2 * _BRAKE * max(0.0, self._end - self._mx)))
-        self._mx += self._v * STEP
-        if self._end - self._mx < 0.01:
-            self._mx, self._v = self._end, 0.0
+        self._v = min(approach(self._v, target, STEP, 0.25), math.sqrt(2 * _BRAKE * max(0.0, self._end - self._cam)))
+        self._cam += self._v * STEP
+        if self._end - self._cam < 0.01:
+            self._cam, self._v = self._end, 0.0
+        if ax is not None:
+            self._px = approach(self._px, clamp(ax, *_LANE), STEP, _STEER_TAU)
 
         if self._buf > 0 and self._jump is None and self._off <= _COYOTE:
             self._jump, self._buf, self._off = 0.0, 0.0, 0.0
@@ -344,41 +387,63 @@ class Chase:
         k = 0.0 if self._jump is None else self._jump / _JUMP_T
         self._h = 4 * _JUMP_H * k * (1 - k)
 
-        b0, b1 = self._mx + _BOX[0], self._mx + _BOX[1]
+        b0 = self._cam + self._px + _BOX[0]
+        b1 = b0 + _BOX[2]
         while self._next < len(self._groups) and self._groups[self._next][1] <= b0:
             self._next += 1
             self._hint_gone = True
         gap, hit = None, False
         for gi in range(self._next, len(self._groups)):
-            x0, _, _, parts = self._groups[gi]
+            x0, _, _, _, parts = self._groups[gi]
             if x0 >= b1:
                 break
             for pi, (x, kind) in enumerate(parts):
-                (lo, hi), height = _KINDS[kind][1:]
                 if (gi, pi) in self._spent:
                     continue
                 if kind == "gap":
-                    if x + lo <= (b0 + b1) / 2 <= x + hi:
+                    if x + 4 <= (b0 + b1) / 2 <= x + _GAP_W - 4:
                         gap = (gi, pi)
-                elif b0 < x + hi and x + lo < b1 and self._h < height:
+                elif any(b0 < x + hi and x + lo < b1 and _HOVER + self._h < -top for lo, hi, top in _ART[kind][1]):
                     self._spent.add((gi, pi))
                     hit = True
         self._off = self._off + STEP if gap and self._jump is None else 0.0
         if self._off > _COYOTE:
             self._spent.add(gap)
             hit = True
+        self._dip = approach(self._dip, _DIP if self._off > _COYOTE else 0.0, STEP, 0.05)
+        self._py = _GROUND - _HOVER - _PH - self._h + self._dip
         if hit and self.t - self._trip >= _STUMBLE + _GRACE:
             self._stumble()
 
         self._bonus = approach(self._bonus, 0.0, STEP, 3.0)
-        self._lead = approach(self._lead, _PHASES[p][4] + self._bonus, STEP, 1.2)
-        if self._mx >= self._end and self._jump is None:
+        self._move_no(self._h / _JUMP_H)
+        if self._cam >= self._end and self._jump is None and self._dip < 0.5:
             self.cornered = True
+
+    def _move_no(self, leap):
+        """NO's target: its phase's distance ahead, eased between seeded evasive moves (each one pauses
+        when it gets there), a lead after stumbles, a flinch up and away while the pointer leaps, and
+        never closer than _NO_GAP to the pointer. It backs into the end wall as the course ends."""
+        if self.cornered or self._cam >= self._out:
+            tx, ty = _WALL_X - _NW, _NY
+        else:
+            p = self._phase_index(self._cam)
+            sx, sy = _PHASES[p][5]
+            i = bisect_right(self._move_t, self.t) - 1
+            (t0, x1, y1), (_, x0, y0) = self._moves[i], self._moves[max(0, i - 1)]
+            k = smoothstep(0.0, 0.9, self.t - t0)
+            tx = _PHASES[p][4] + sx * (x0 + (x1 - x0) * k) + self._bonus + 10 * leap
+            ty = _NY + sy * (y0 + (y1 - y0) * k) - 10 * leap
+            tx = max(tx, self._px + _PW + _NO_GAP)
+        wall = self._end + _WALL_X - self._cam
+        self._nx = min(approach(self._nx, tx, STEP, 0.35), _NX_MAX, wall - _NW)
+        self._ny = approach(self._ny, ty, STEP, 0.3)
+        self._na = approach(self._na, _FLOAT_A / 2 if self.cornered or self._cam >= self._out else _FLOAT_A, STEP, 0.5)
 
     def _stumble(self):
         self._trip = self.t
         self._bonus = min(_LEAD_MAX, self._bonus + _LEAD_BONUS)
         rng = self._rng
-        x, y = self._mx + _BOX[1], _FOOT - 16 - self._h      # knocked off its front, up and forward
+        x, y = self._cam + self._px + _BOX[0] + _BOX[2], self._py + 36      # knocked off its front
         self._bits = [(self.t, x + rng.uniform(-6, 6), y, rng.uniform(-30, 110), rng.uniform(-170, -70),
                        rng.choice(_SCATTER)) for _ in range(7)]

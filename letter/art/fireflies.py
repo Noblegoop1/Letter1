@@ -12,6 +12,16 @@ a flash peak, and a faint trail that keeps the light it had a moment ago, so a f
 short fading streak. Three depth bands (far: small, dim, slow, cooler, drawn behind the grass; near:
 larger, brighter, warmer) plus a few big out-of-focus "bokeh" discs close to the camera. `lights()`
 hands the scene each one's position and strength for its wide bloom halo. Pure NumPy.
+
+The invitation (SPEC 10.7): gather(targets, t) turns the swarm into the message, one firefly per target.
+The mid and near fireflies take the places nearest them; extra ones rise out of the grass in lanes either
+side of the flower or fly in from the side edges, fading in, until every place is taken. Each follows its
+own cubic Bezier at its own staggered moment and settles exactly on its place by the end of the
+duration, then hovers a fraction of a pixel. A wanderer that joins hands its light over from its big stamp
+to the small message dot as it settles. scatter(t) releases them outward (YES) or loosens them to sink
+and fade (NO, gentle). Message fireflies are many (about 1,000), so they are drawn with one vectorised
+splat (dots()) and lend the bloom pass one light per 8 px cell. Paths are closed-form in time: frame-rate
+independent and deterministic per seed.
 """
 import numpy as np
 
@@ -53,6 +63,57 @@ _LAYERS = {None: (0, 1, 2), "far": (0,), "near": (1, 2), "bokeh": ()}
 _BK_RGB = np.array([1.0, 0.95, 0.45])     # warm, so they read as out-of-focus fireflies, not lens dust
 _BK_GAIN = 0.21                 # at radius 14; larger discs spread the same light thinner
 _BK_FADE = 0.2
+
+# Message fireflies (SPEC 10.7).
+_TAPS = np.arange(-1, 3, dtype=np.float32)   # a dot covers 4 x 4 pixels around floor(x), floor(y)
+_DOT_SIGMA = (0.6, 1.2)         # core and halo of a dot
+_M_CORE_HEX = ("#fff0a0", "#f2ff9c")   # (gold, lime) like the near band, a little warmer
+_M_HALO_HEX = ("#e0b440", "#b0dc46")
+_M_GOLD = 0.6                   # share of gold ones
+_M_CORE_GAIN, _M_HALO_GAIN = 2.6, 1.0
+_M_LIGHT = 0.04                 # lights() strength per message firefly at full brightness
+_M_CELL = 8                     # ... summed per cell of the scene's 1/8 bloom grid
+_M_HOVER = 0.3                  # px a settled firefly drifts about its place
+_M_FADE = 0.18                  # share of its flight a joiner takes to fade in
+
+
+def _ss(x, a=0.0, b=1.0):
+    t = np.clip((x - a) / (b - a), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _taps(f, sigma):
+    """(16, M) weights of the 4 x 4 pixels around dots at fractional offsets f (2, M) (each sums to 1)."""
+    d = _TAPS[:, None, None] - f[None]
+    w = np.exp(d * d * np.float32(-0.5 / sigma ** 2))
+    w /= w.sum(0, keepdims=True)
+    return (w[:, None, 1] * w[None, :, 0]).reshape(16, -1)
+
+
+_OFF16 = (np.arange(-1, 3)[:, None] * SIZE + np.arange(-1, 3)[None, :]).ravel()[:, None]
+_CH = np.arange(3)[:, None, None]
+
+
+def dots(canvas, xy, core, halo):
+    """Add soft points of light to canvas ((640, 640, 3) float32, C-contiguous, in place): at each xy (M, 2)
+    a tight core of colour core (M, 3) and a wider faint halo of colour halo (M, 3), both already scaled
+    by brightness. Sub-pixel placement keeps each dot's total light the same wherever it sits, so slow
+    drift glides; dots within 2 px of the edge are skipped."""
+    if canvas.shape != (SIZE, SIZE, 3) or not canvas.flags.c_contiguous:
+        raise ValueError("canvas must be a C-contiguous (640, 640, 3) array")
+    x, y = xy[:, 0], xy[:, 1]
+    keep = (x >= 1) & (x < SIZE - 3) & (y >= 1) & (y < SIZE - 3)
+    if not keep.all():
+        x, y, core, halo = x[keep], y[keep], core[keep], halo[keep]
+    if x.size == 0:
+        return
+    xi, yi = x.astype(np.intp), y.astype(np.intp)
+    f = np.stack([x - xi, y - yi]).astype(np.float32)
+    # channels first and dots innermost: broadcasting over a trailing axis of 3 is ten times slower
+    val = (np.ascontiguousarray(np.transpose(core), np.float32)[:, None] * _taps(f, _DOT_SIGMA[0])
+           + np.ascontiguousarray(np.transpose(halo), np.float32)[:, None] * _taps(f, _DOT_SIGMA[1]))
+    idx = ((yi * SIZE + xi) + _OFF16) * 3 + _CH
+    np.add.at(canvas.reshape(-1), idx.ravel(), val.ravel())
 
 
 def _rgb(hexstr):
@@ -104,6 +165,7 @@ def _disc(r):
 class Fireflies:
     def __init__(self, count=40, seed=7):
         n = self.count = int(count)
+        self._seed = seed
         rng = np.random.default_rng(seed)
         u = lambda lo, hi, size=n: rng.uniform(lo, hi, size)   # noqa: E731
 
@@ -197,6 +259,8 @@ class Fireflies:
         self._seek_t = np.zeros(n)
         self._attract = None
         self._target = self._pick(np.arange(n))
+        self._keep = np.ones(n)   # share of each wanderer's own light left (joining the message hands it over)
+        self._m_n = 0             # message fireflies: none until gather()
 
     @property
     def positions(self):
@@ -276,6 +340,173 @@ class Fireflies:
             pos[i], vel[i] = self._perch[i], 0.0
             self._th[i], self._sp[i] = self._th0[i], self._sp0[i]
             self._k[i], self._hov[i], self._seek_t[i] = 0, False, 0.0
+        if self._m_n:
+            self._update_message(dt, t)
+
+    # --- the invitation (SPEC 10.7) ----------------------------------------------------------------
+    def gather(self, targets, t, duration=7.0):
+        """Begin forming the message at story time t: one firefly per target ((N, 2) canvas px), all
+        settled by t + duration. Wanderers keep wandering until their own moment to set off."""
+        T = np.array(targets, np.float32).reshape(-1, 2)
+        n, D, t = len(T), float(duration), float(t)
+        rng = np.random.default_rng(self._seed + 1000)
+        u = lambda lo, hi, size=n: rng.uniform(lo, hi, size)   # noqa: E731
+
+        # Mid and near wanderers take the free places nearest them; joiners fill the rest.
+        out = np.ones(self.count, bool) if self._released is None else self._released
+        src = np.full(n, -1)
+        free = np.ones(n, bool)
+        for i in rng.permutation(np.flatnonzero((self._band > 0) & out))[:n]:
+            k = int(np.argmin(np.where(free, np.hypot(*(T - self._pos[i]).T), np.inf)))
+            free[k], src[k] = False, i
+        own = src >= 0
+        # Joiners rise out of the grass in a lane beside the flower, or fly in from the side edges of the
+        # night, on their target's side; then they hook in to their place from below.
+        side = np.where(T[:, 0] + rng.normal(0, 40, n) < SIZE / 2, -1.0, 1.0)
+        grass = rng.random(n) < 0.55
+        gx, gy = SIZE / 2 + side * u(130, 205), u(462, 494)
+        ex, ey = SIZE / 2 + side * u(336, 352), u(150, 420)
+        P = np.empty((4, n, 2), np.float32)
+        P[0] = np.stack([np.where(grass, gx, ex), np.where(grass, gy, ey)], -1)
+        P[1] = np.stack([np.where(grass, gx + side * u(-15, 40), ex - side * u(90, 170)),
+                         np.where(grass, gy - u(150, 230), ey - u(0, 90))], -1)
+        P[2] = np.stack([P[1, :, 0] + (T[:, 0] - P[1, :, 0]) * u(0.15, 0.5), T[:, 1] + u(40, 100)], -1)
+        P[3] = T
+        P[0, own] = P[1, own] = self._pos[src[own]]   # set again when each sets off
+        P[2, own] = T[own] + np.stack([u(-40, 40), u(20, 70)], -1)[own]
+        L = sum(np.hypot(*(P[k + 1] - P[k]).T) for k in range(3))
+        F = np.clip(L / u(105, 145), 0.3 * D, 0.62 * D)
+        # Staggered starts: wanderers first; joiners spread over the time left, the left of the message a
+        # little sooner, so it fills roughly in reading order without moving as one.
+        xn = (T[:, 0] - T[:, 0].min()) / max(float(np.ptp(T[:, 0])), 1.0)
+        lo = t + np.where(own, 0.0, 0.03 * D)
+        when = np.where(own, 0.25 * rng.random(n), 0.55 * rng.random(n) + 0.45 * xn)
+        s = lo + (t + 0.96 * D - F - lo) * when
+
+        self._m_n, self._m_mode, self._m_t, self._m_tick = n, "gather", t, 0
+        self._m_P, self._m_F, self._m_s, self._m_src = P, F, s, src
+        self._m_set = ~own                     # joiners have their whole path; wanderers set off later
+        self._m_wob = np.stack([u(2.0, 7.0), 2 * np.pi * u(0.3, 0.8), u(0, 6.3), 2 * np.pi * u(0.3, 0.8), u(0, 6.3)])
+        self._m_hov = np.stack([2 * np.pi * u(0.12, 0.35), u(0, 6.3), 2 * np.pi * u(0.12, 0.35), u(0, 6.3)])
+        rank = rng.permutation(n)
+        self._m_period = 1.6 + 2.6 * (rank + u(0.2, 0.8)) / n
+        self._m_phase = (rank * 0.6180339887 + u(0, 0.05)) % 1.0
+        self._m_peak = u(0.75, 1.0)
+        self._m_wing = np.stack([2 * np.pi * u(9, 15), u(0, 6.3)])
+        hue = (rng.random(n) >= _M_GOLD).astype(int)   # 0 gold, 1 lime
+        core = np.array([_rgb(h) for h in _M_CORE_HEX], np.float32) * _M_CORE_GAIN
+        halo = np.array([_rgb(h) for h in _M_HALO_HEX], np.float32) * _M_HALO_GAIN
+        self._m_core, self._m_halo = core[hue], halo[hue]
+        self._m_pos = P[0].copy()
+        self._m_vel = np.zeros((n, 2), np.float32)
+        self._m_vis = np.zeros(n)
+        self._m_calm = np.zeros(n)
+        self._m_memo_key = None
+        self._keep[:] = 1.0
+
+    def formed(self):
+        """0..1: the share of message fireflies settled on their places (0 before gather and once they
+        have been released by scatter)."""
+        if not self._m_n:
+            return 0.0
+        if self._m_mode == "gather":
+            return float(np.mean(self._m_set & (self._m_t >= self._m_s + self._m_F)))
+        return float(np.mean(self._sc_was & (self._m_t < self._m_s)))
+
+    def scatter(self, t, duration=3.0, gentle=False):
+        """Release the message at story time t: each firefly leaves its place at its own moment and flies
+        outward into the night, glowing, then fading; all are gone by t + duration. gentle (NO): they
+        loosen, sink a little and dim instead."""
+        if not self._m_n:
+            return
+        n, D, t = self._m_n, float(duration), float(t)
+        rng = np.random.default_rng(self._seed + (3000 if gentle else 2000))
+        u = lambda lo, hi, size=n: rng.uniform(lo, hi, size)   # noqa: E731
+        A = self._m_pos.copy()
+        d = A - self._m_P[3].mean(0)
+        r = np.hypot(d[:, 0], d[:, 1])
+        a = np.arctan2(d[:, 1], d[:, 0]) + u(-0.5, 0.5)
+        if gentle:
+            out = np.stack([0.6 * np.cos(a), 0.3 * np.sin(a) + 0.7], -1) * u(18, 60)[:, None]
+            s = t + 0.25 * D * rng.random(n)
+        else:   # outward and a little up, the middle of the message first, like a breath out
+            out = np.stack([np.cos(a), np.sin(a) - 0.2], -1)
+            out *= (u(220, 480) / np.hypot(out[:, 0], out[:, 1]))[:, None]
+            s = t + 0.3 * D * (0.6 * rng.random(n) + 0.4 * r / max(float(r.max()), 1.0))
+        was = self._m_set.copy()   # wanderers still on their own stay wanderers
+        self._keep[self._m_src[~was & (self._m_src >= 0)]] = 1.0
+        self._m_mode, self._m_s, self._m_F = "scatter", s, t + D - s
+        self._sc_A, self._sc_V, self._sc_out, self._sc_t = A, self._m_vel.copy(), out, t
+        self._sc_gentle, self._sc_was = gentle, was
+        self._m_vis0 = np.where(was, self._m_vis, 0.0)
+        self._m_memo_key = None
+
+    def _update_message(self, dt, t):
+        n = self._m_n
+        src = self._m_src
+        if self._m_mode == "gather":
+            go = ~self._m_set & (self._m_s <= t)
+            if go.any():   # wanderers setting off: their path starts where they are, at the speed they fly
+                k = np.flatnonzero(go)
+                i = src[k]
+                self._m_P[0, k] = self._pos[i]
+                self._m_P[1, k] = self._pos[i] + self._vel[i] * (self._m_F[k] / 3)[:, None]
+                self._m_s[k] = t
+                self._m_set[k] = True
+            tau = np.clip((t - self._m_s) / self._m_F, 0.0, 1.0)
+            # joiners leave from rest; wanderers keep their speed (u'(0) = 1); both arrive at rest
+            uu = np.where(src < 0, tau * tau * (3 - 2 * tau), tau * (1 + tau - tau * tau))[:, None]
+            P, v = self._m_P, 1 - uu
+            pos = v ** 3 * P[0] + 3 * v * v * uu * P[1] + 3 * v * uu * uu * P[2] + uu ** 3 * P[3]
+            w = self._m_wob
+            env = (w[0] * np.sin(np.pi * tau) ** 2)[:, None]
+            pos += env * np.stack([np.sin(w[1] * t + w[2]), np.sin(w[3] * t + w[4])], -1)
+            h = self._m_hov
+            rest = (_M_HOVER * _ss(t - self._m_s - self._m_F, 0.0, 1.5))[:, None]
+            pos += rest * np.stack([np.sin(h[0] * t + h[1]), np.sin(h[2] * t + h[3])], -1)
+            wait = ~self._m_set
+            pos[wait] = self._pos[src[wait]]
+            look = _ss(tau, 0.35, 0.85) * self._m_set
+            self._m_vis = np.where(src < 0, _ss(tau, 0.0, _M_FADE), look)
+            self._m_calm = _ss(tau, 0.7, 1.0)
+            keep = 1.0 - look
+        else:
+            tau = np.clip((t - self._m_s) / self._m_F, 0.0, 1.0)
+            k = 0.4   # s over which the speed they had when released dies away
+            pos = self._sc_A + self._sc_V * (k * (1 - np.exp(-(t - self._sc_t) / k)))
+            pos += self._sc_out * (tau * tau * (2 - tau))[:, None]   # from rest, still moving as they vanish
+            w = self._m_wob
+            env = (w[0] * np.sin(np.pi * tau) ** 2)[:, None]
+            pos += env * np.stack([np.sin(w[1] * t + w[2]), np.sin(w[3] * t + w[4])], -1)
+            if self._sc_gentle:
+                fade, flare = 1 - _ss(tau, 0.05, 1.0), 1.0
+            else:
+                fade, flare = 1 - _ss(tau, 0.25, 1.0), 1 + 0.8 * np.sin(np.pi * np.clip(tau / 0.5, 0, 1)) ** 2
+            self._m_vis = self._m_vis0 * fade * flare
+            self._m_calm = np.ones(n)
+            keep = (1.0 - self._m_vis0) * fade
+        if dt > 0:
+            self._m_vel = ((pos - self._m_pos) / dt).astype(np.float32)
+        self._m_pos = pos.astype(np.float32)
+        self._m_t, self._m_tick = t, self._m_tick + 1
+        # wanderers on their way: their stamp follows their place, handing its light to the message dot
+        j = np.flatnonzero((src >= 0) & self._m_set)
+        if j.size:
+            i = src[j]
+            self._pos[i] = np.clip(pos[j], _M, SIZE - 1 - _M)
+            self._vel[i] = self._m_vel[j]
+            self._keep[i] = keep[j]
+
+    def _message_bright(self, t):
+        """(N,) brightness of each message firefly at t: lively pulses in flight, calmer once settled."""
+        key = (t, self._m_tick)
+        if self._m_memo_key != key:
+            soft = (0.5 - 0.5 * np.cos(2 * np.pi * (t / self._m_period + self._m_phase))) ** 1.5
+            level = self._m_peak * (0.3 + 0.7 * soft + self._m_calm * (0.36 - 0.36 * soft))
+            w = self._m_wing
+            self._m_b = level * (1.0 + 0.05 * np.sin(w[0] * t + w[1])) * self._m_vis
+            self._m_memo_key = key
+        return self._m_b
 
     def pulse(self, t):
         """Brightness 0..1 of each firefly at time t (t may be an array of shape (T, 1) -> (T, count))."""
@@ -308,18 +539,39 @@ class Fireflies:
 
     def lights(self, t, arrival=1.0):
         """(x, y, strength) float arrays for the fireflies visible now (canvas px; strength 0..1 is the
-        current brightness, larger for nearer bands), for the scene's wide bloom halo. Bokeh not included."""
-        b = self._bright(t, arrival)[0]
+        current brightness, larger for nearer bands), for the scene's wide bloom halo. Bokeh not included.
+        Message fireflies follow the wanderers, summed per 8 px cell (at the cell's light-weighted centre),
+        so ~1,000 of them cost the bloom pass about 150 splats and glow softly together."""
+        b = self._bright(t, arrival)[0] * self._keep
         i = np.flatnonzero(b > _LIT)
-        return self._pos[i, 0].copy(), self._pos[i, 1].copy(), b[i] * _LIGHT_GAIN[self._band[i]]
+        x, y, s = self._pos[i, 0].copy(), self._pos[i, 1].copy(), b[i] * _LIGHT_GAIN[self._band[i]]
+        if not self._m_n:
+            return x, y, s
+        b, p = self._message_bright(t), self._m_pos
+        ok = (b > _LIT) & (p[:, 0] >= 0) & (p[:, 0] < SIZE) & (p[:, 1] >= 0) & (p[:, 1] < SIZE)
+        p, w = p[ok], b[ok] * _M_LIGHT * (4.0 - 3.0 * self._m_calm[ok])   # brighter halos in flight
+        g = SIZE // _M_CELL
+        cell = (p[:, 1] // _M_CELL).astype(np.intp) * g + (p[:, 0] // _M_CELL).astype(np.intp)
+        tot = np.bincount(cell, w, g * g)
+        nz = np.flatnonzero(tot)
+        mx = np.bincount(cell, w * p[:, 0], g * g)[nz] / tot[nz]
+        my = np.bincount(cell, w * p[:, 1], g * g)[nz] / tot[nz]
+        return np.concatenate([x, mx]), np.concatenate([y, my]), np.concatenate([s, np.minimum(tot[nz], 1.0)])
 
     def render(self, canvas, t, arrival=1.0, layer=None):
         """Add light into canvas ((640, 640, 3) float, in place). arrival 0..1 brings them in one by one,
         rising out of the grass. layer: None everything; "far" the far band (the scene draws it behind
-        the grass and the flower); "near" the mid and near bands; "bokeh" the out-of-focus foreground."""
+        the grass and the flower); "near" the mid and near bands and the message fireflies, in front of
+        the flower; "bokeh" the out-of-focus foreground."""
         if layer not in _LAYERS:
             raise ValueError(f"layer must be None, 'far', 'near' or 'bokeh', not {layer!r}")
         lv = self._bright(t, arrival)
+        if self._m_n:
+            lv = lv * self._keep   # wanderers in the message hand their light to their message dot
+            if layer in (None, "near"):
+                b = self._message_bright(t)
+                i = np.flatnonzero(b > _LIT)
+                dots(canvas, self._m_pos[i], self._m_core[i] * b[i, None], self._m_halo[i] * b[i, None])
         if layer in (None, "bokeh"):
             self._render_bokeh(canvas, t, arrival)
             if layer:

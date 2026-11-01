@@ -1,6 +1,8 @@
 # Spec: "To Esther" — an interactive letter, as a Windows desktop app
 
-Status: **APPROVED v3 (2026-10-31), defaults taken for Q1–Q5. Built through G5 (2026-11-01); G6 release in progress.** Later user changes the same day: the letter world
+Status: **APPROVED v3 (2026-10-31), defaults taken for Q1–Q5. Built through G5 (2026-11-01); G6 release in progress.
+2026-11-01 feature update (user brief): the fireflies form a date invitation with its own YES/NO and two new
+endings (§10.7), and the chase game is redesigned as a pointer-vs-floating-button runner (§12) — gate G7, built.** Later user changes the same day: the letter world
 stays ASCII (envelope, paper, questions, all text); the question banner becomes shaded ASCII lettering; the
 envelope tilts visibly and the banner and buttons hover; the flower becomes a sea holly in the user's blue gradients (an ocean glow under the moon); clouds
 and a moon fill the night sky as the flower blooms; the fireflies get a richer pass (§9, §10). This is the
@@ -19,6 +21,7 @@ now live in `docs/superseded/web/` for history only. The module index and build 
 | Visual rule | "Every visual is ASCII" | Still ASCII for the envelope, paper, dedication, questions, all text, buttons, effects, dissolves, heart shatter, chase game, glitch and face (user decision, 2026-10-31). The night flower, meadow and fireflies are pointillist particle dots; an optional ASCII rendering of the flower can come later. |
 | Envelope writing | `RAHHH` / `SHE OPENED IT` | **To Esther** (fades in on launch) |
 | Flower | ASCII placeholder (`site/flower.py`) | Pointillist particle flower after iremcnar/Flowers at 640 × 640 logical (see §10 and open question Q1) |
+| Finale (YES route) | The bloomed garden was the end | The fireflies gather into "Will you go on a date Tuesday?" with its own YES/NO: YES → a warm kaomoji ending and the app closes; NO → the crying-face ending (§10.7) |
 | Fireflies | 10 fireflies orbiting the flower | 30–60 detailed fireflies travelling the whole night scene; they rise out of the grass, some pass behind it, a few drift close as soft out-of-focus lights |
 | Question banner | Pixel-font letters of `#` and `/` | Shaded ASCII lettering: a real typeface cut into cells, each cell the best-fitting mark, lit from the top left, with an extruded side (§9) |
 | Flower | Purple and pink pointillist lotus (later in "sunrise" colours) | A pointillist sea holly in the user's blue gradients, glowing like the ocean under the moon (§10.4) |
@@ -220,11 +223,18 @@ def hover_label(label, e, rng_seed):
 
   ```
   intro → letter
-      YES route: yes-reveal → night → seed → grown → bloom → bloomed
-      NO route:  no-1 → no-2 → no-3 → no-4 (shatter, message, auto-open, escape) → chase-a → chase-b → chase-c → cornered → glitch → face → black
+      YES route: yes-reveal → night → seed → grown → bloom → bloomed (fireflies arrive, then wander)
+                 → gather (they converge and form the invitation) → invite (its YES / NO)
+                     date-yes → farewell (scatter, flower brightens, dims, black) → joy (smile → love eyes) → exit
+                     date-no  → letgo (the message disperses, the night fades) → face → black
+      NO route:  no-1 → no-2 → no-3 → no-4 (shatter, message, auto-open, escape) → chase (phases A, B, C
+                 inside the game) → cornered → glitch → face → black
   ```
 
-  - **Events:** `yes`, `no`, `flower`, `catch`.
+  - **Events:** `yes`, `no`, `flower`, `course-end`, `catch`, `date-yes`, `date-no`.
+  - **Three separate decisions:** the envelope's YES/NO (`yes`, `no`), the invitation's YES/NO
+    (`date-yes`, `date-no`, accepted only in `invite`), and catching the cornered NO (`catch`, only in
+    `cornered`). Each has its own buttons, hitboxes and events; none touches another's state or counters.
   - **Gating:** each event counts only in the phases that accept it, and only when input is unlocked.
   - **Commitment:** `yes` from any letter phase (letter, no-1, no-2, no-3) commits to the YES route.
     From no-4 onward the NO route is committed and YES is gone.
@@ -401,6 +411,8 @@ YES locks both buttons immediately. Repeated clicks, NO, and hover effects do no
 
 ### 10.5 Fireflies (`fireflies`)
 - **Arrival:** after the bloom completes they rise out of the grass over about 6 s, one at a time.
+- **Wandering, then the invitation:** once they have all arrived they wander for a configurable delay
+  (`config.WANDER`, default 6.5 s), then gather into the invitation (§10.7).
 - **Count:** about 40 by default (configurable 20–80 by quality).
 - **Each one has:** a bright core, a soft halo, a size and brightness range, its own pulse cycle
   (period 1.2–4 s, varying peak, some slow and soft, some bright), a faint short glow trail and a tiny
@@ -427,6 +439,46 @@ YES locks both buttons immediately. Repeated clicks, NO, and hover effects do no
   over the moon now and then; gaps always remain.
 - Cloud bodies stay dim so the moon and the flower are the bright points; the moon blooms softly.
 
+### 10.7 The invitation (`invite`): fireflies form the question, and its two endings
+1. **Gathering** (`gather`, about 7 s), gradual and organic, in four overlapping stages:
+   - free movement continues at first;
+   - attraction: each firefly's target drifts toward its place in the message, at its own moment;
+   - convergence: paths become coordinated but never synchronised;
+   - formation: they settle, and the lettering becomes readable.
+
+   No teleporting and no snapping. Their pulsing and glow continue throughout.
+2. **The message is made of fireflies.** The exact text **"Will you go on a date Tuesday?"** is set in the
+   bundled font, rasterised to a bitmap, and sampled into cells; every occupied cell is one firefly.
+   - The existing fireflies take some of the places. Extra fireflies, with the same look and behaviour,
+     fly in from the grass and the edges of the night until every cell is filled, so the letters are
+     filled, not outlined.
+   - Layout: two lines ("Will you go on" / "a date Tuesday?"), centred, in the upper sky of the 640 × 640
+     scene, clear of the flower's head; the moon may sit behind the end of a line.
+   - Once formed, each firefly keeps pulsing and flickering a little and adds a soft halo through the
+     bloom pass. The lettering stays pointillist, not a neon sign, and never outshines the flower.
+3. **The invitation's buttons** fade in under the message once it has formed. They are a new pair, YES
+   and NO:
+   - they look unlike the envelope buttons: soft, glowing dot outlines and dot-matrix labels made of the
+     same luminous points as the message;
+   - hover brightens and lifts them slightly, while the hitboxes stay fixed;
+   - they have their own events (`date-yes`, `date-no`) and are accepted only in `invite`.
+4. **NO** (`letgo`, about 2.5 s, then the shared ending): the buttons go inactive, the message disperses,
+   and the night fades to black. Then the existing face, its single tear and permanent black play (§13).
+   There is no chase and no shatter, and nothing counts toward the envelope's NO clicks.
+5. **YES** (`farewell`, about 8 s, then `joy`):
+   - the buttons go inactive;
+   - the message breaks apart: its fireflies leave their places and scatter outward into the night,
+     glowing, then fading;
+   - meanwhile the flower brightens beyond its bloom glow (detail kept, no wash-out), holds, then dims
+     smoothly while the fireflies vanish and the night fades to black;
+   - **joy** (about 7.5 s): on black, a centred smiling kaomoji ``(˶ᵔ ᵕ ᵔ˶)`` fades in, then gently changes
+     to love eyes ``(♡‿♡)`` (never both at once), holds with a faint pulse and fades;
+   - then the app closes normally (exit code 0, no error, no restart).
+   - The faces' glyphs come from Windows' own Segoe UI Symbol at runtime (not bundled; every Windows 10/11
+     PC has it). If it is missing, ASCII-safe faces in the bundled font are used instead.
+6. **Locks:** input is locked through each ending; repeated clicks do nothing; no earlier button comes
+   back.
+
 **Acceptance (YES):**
 - Y1: every step 1–18 of the directive's YES test list plays in order, from one click, with no cut or
   stretch at 1280 × 800, 1920 × 1080 and 1366 × 768.
@@ -439,6 +491,20 @@ YES locks both buttons immediately. Repeated clicks, NO, and hover effects do no
 - Y6: 60 fps average and no frame over 33 ms on this PC (logged by `--selftest`).
 - Y7: the sky is clear (stars only) before the bloom; clouds gather and the moon appears after it, and the
   moon is not hidden behind the flower's aura.
+
+**Acceptance (invitation):**
+- I1: after the bloom, the fireflies wander for the configured delay before gathering starts.
+- I2: gathering is gradual: staggered starts, smooth paths, no teleporting or snapping.
+- I3: the exact message is formed only by firefly particles, one per occupied cell of the text bitmap. It
+  is readable, sits inside the scene, and stays clear of the flower's head.
+- I4: extra fireflies join when needed, looking and moving like the others.
+- I5: the invitation buttons appear only once the message has formed. They differ from the envelope
+  buttons, have fixed hitboxes and hover feedback, and send only `date-yes` / `date-no`.
+- I6: NO plays the message dispersing, the night fading, then the existing face with one tear, then
+  permanent black.
+- I7: YES plays the scatter, the flower brightening then dimming, black, the smile then love eyes, then a
+  normal exit with code 0.
+- I8: input is locked through both endings, and no earlier decision's buttons or counters react.
 
 ---
 
@@ -479,38 +545,54 @@ to the YES route.
 - the message is fully readable;
 - the NO button stays recognisable through the jump.
 
-## 12. Chase game (`chase`), 320 × 320 logical
-- **Look:** an ASCII world on dark paper:
-  - a ground line of `_ - = ~` patterns, with a parallax horizon row;
-  - a **red ASCII mouse pointer**: the computer's arrow cursor (an arrowhead pointing up-left with a short
-    stem), not an animal (user clarification, 2026-11-01); it glides with a slight bob and tilt, lifts and
-    tilts in a jump, may leave a faint motion trail, and wobbles when it stumbles;
-  - the fleeing **NO button**, a small framed `[NO]` box that bobs and hops.
+## 12. Chase game (`chase`), 320 × 320 logical — redesigned 2026-11-01
+The concept: **the player's mouse pointer chases the big floating NO button**, jumping over walls, in a
+side-scrolling runner. The layout and readability follow a classic runner (the user's dinosaur-game
+reference): a ground line low on the screen, the player lower left, obstacles arriving from the right,
+the target ahead. The artwork is our own: ASCII glyphs and the envelope's NO button. No dinosaur, no
+cacti.
+- **Look:** dark paper; a solid ground line with a scrolling dotted texture below it and a faint slow
+  horizon; everything in glyphs, drawn crisp at window resolution (the 320 × 320 canvas is the
+  coordinate space, not a bitmap that gets stretched).
+- **Player: a mouse pointer.** A red ASCII arrow cursor, much larger than a system cursor, with a clear
+  outline and fill. It has no animal features, no legs and no run cycle; it glides, tilting slightly.
+  - While the chase is on screen the system cursor is hidden, so only one pointer is visible.
+  - Its horizontal position follows the real mouse (window → logical through the viewport), clamped to a
+    lane on the left part of the ground.
+  - **Space** jumps along a fixed, smooth arc (coyote time and a press buffer for forgiveness), and
+    horizontal control continues in the air. Nothing else jumps.
+- **Target: the NO button.** It is the envelope's NO button art itself (dashed frame, block letters,
+  lavender), drawn crisp and large: about a third of the play width. It is a UI button that escaped, not
+  a creature: no legs and no running.
+  - It hovers above the ground with a smooth rise-pause-fall float.
+  - It drifts away and evades: it pulls ahead, shifts, pauses, resumes. It stays readable and on screen,
+    and is always reachable.
+- **Obstacles: recognisable, block-built shapes** with collision boxes that match what is drawn:
+  - short barrier (`+--+` / `|##|`);
+  - wall (several rows of `|####|` under a `+----+` cap);
+  - tall wall;
+  - stacked blocks;
+  - a ground gap (a visible missing section of the ground line);
+  - clusters of these.
 
-  The cells are crisp because of nearest-neighbour scaling.
-- **Controls:**
-  - the player runs automatically;
-  - **Space** jumps: fixed height and duration, with coyote time and a jump buffer for forgiveness;
-  - Space does nothing else anywhere in the app, and clicks do nothing in the game.
-- **Physics:** a fixed 120 Hz simulation step; drawing interpolates between steps, independent of fps.
-- **Obstacles:** at least 5 kinds, each clearly distinct from the ground:
-  - a small rock `o`;
-  - low debris `,;.`;
-  - a short barrier `|#|`;
-  - a tall stack `[#]` (2 rows);
-  - a ground gap;
-  - plus groups of these.
-
-  They come from a **scripted course** with seeded variation in spacing, so it is always fair: the
-  minimum gap is never below a jump's landing distance plus reaction time.
-- **Phases (total 60–120 s, target about 90 s):**
-  - **A**, about 20 s: tutorial pace, single obstacles, a "SPACE" hint glyph once.
-  - **B**, about 45 s: denser, mixed obstacles, slightly faster.
-  - **C**, about 25 s: fastest, and the NO button visibly closer.
-- **Collision:**
-  - a brief stumble (0.6 s): a flash at most twice, and a glyph scatter;
-  - the NO button regains a little lead;
-  - the course continues. There is no restart or game over, and the ending is always reachable.
+  All share one consistent style: no stray symbols, no noise.
+- **Physics:** fixed 120 Hz steps, frame-rate independent. Collision boxes are slightly smaller than the
+  drawn shapes, to be forgiving.
+- **Course:** scripted, with seeded variation, and always fair (every gap leaves enough room to land and
+  react).
+  - **Phases:**
+    - A, about 20 s: introduction, single low walls, a `[ SPACE ]` hint once;
+    - B, about 45 s: more walls, sizes and gaps, some clusters, the NO button pulling ahead;
+    - C, about 25 s: final approach, the NO button closer, obstacles thinning out.
+  - Total 60–120 s, target about 90 s; under 130 s even for a player who never jumps.
+- **Collision:** a short reaction (the pointer flashes at most twice and a few glyphs scatter), a brief
+  slowdown, then the course continues. The NO button gains a little lead. No restart and no game over.
+- **Cornered** (§13 step 1): scrolling stops and the NO button is trapped against a wall, hovering and
+  trembling.
+  - The pointer now follows the mouse freely (x and y).
+  - The tremble grows with the pointer's proximity: almost none when far, subtle at a medium distance,
+    strong when near, intense when very close.
+  - Only now can the button be clicked (or Enter).
 
 **Acceptance (chase):**
 - C1: Space jumps and nothing else does.
@@ -519,8 +601,21 @@ to the YES route.
 - C3: after a collision it recovers and progress continues.
 - C4: the NO button is visible for the whole chase.
 - C5: the course is reachable at 30, 60 and 144 fps (scripted, frame-rate-independent).
+- C6: the player is a pointer arrow (no animal, legs or body), and the system cursor is hidden during the
+  chase.
+- C7: the pointer's horizontal position follows the real mouse inside its lane, and jumps keep that
+  control.
+- C8: the NO button is the envelope's NO button art, about a third of the play width; it floats and
+  evades and never has legs.
+- C9: obstacles are recognisable block shapes (walls, barriers, stacks, gaps, clusters), and each one's
+  collision box matches its drawing.
+- C10: the composition reads as a runner: ground low, player lower left, obstacles from the right, NO
+  ahead.
 
-## 13. Ending (`ending`)
+## 13. Endings (`ending`)
+The crying-face ending (steps 3–5) is shared by the NO route and by NO on the invitation (§10.7). The
+invitation's YES ending is in §10.7.
+
 1. **Cornered:**
    - scrolling stops and the NO button backs into the right-hand wall `|`;
    - its run animation stops and it trembles;
@@ -548,6 +643,8 @@ to the YES route.
 - E2: the shake amplitude rises steadily with proximity (unit test on the mapping).
 - E3: the glitch, dissolve, face, exactly one tear and permanent black happen in order.
 - E4: no input does anything after black except closing the window.
+- E5: the invitation's NO reaches the same face and single tear without passing through the chase or
+  the glitch; its YES ends with the joy faces and a normal exit.
 
 ---
 
@@ -572,6 +669,12 @@ to the YES route.
 | no-4 open and rise | 1.2 |
 | no-4 hop | 0.8 |
 | no-4 zoom | 1.6 |
+| Wander before the invitation (`config.WANDER`) | 6.5 (after the fireflies' 6.3 s arrival) |
+| Gather into the message | 7.0 |
+| Invitation buttons fade in (input lock) | 1.2 |
+| NO: letgo | 2.5 |
+| YES: farewell (scatter 0–3, brighten 1–3.5, dim 4.5–8, black by 8) | 8.0 |
+| YES: joy (smile 0.6–2.8, love eyes 3.2–5.6, fade 5.8–7.0) | 7.5 |
 | Chase | about 90 |
 | Ending: freeze, glitch, dissolve | 0.4 / 2.0 / 2.5 |
 | Ending: face, tear form, tear fall | 2.0 / 1.0 / 3.5 |
@@ -588,6 +691,7 @@ to the YES route.
   | Grass | ≤ 3 ms |
   | Fireflies | ≤ 2 ms |
   | Sky (stars, clouds, moon) | ≤ 2.5 ms |
+  | Message fireflies (about 1,000, while gathering and formed) | ≤ 3 ms |
   | Glow | ≤ 4 ms (half-rate if needed) |
   | Scaling and blit | ≤ 3 ms |
   | Total | ≤ 16 ms (measured 2026-10-31 before the sky: about 14 ms bloomed) |
@@ -641,8 +745,10 @@ to the YES route.
 - **Screenshots:** `tools/shots.py` renders key frames of both routes at 1280 × 800 and 1920 × 1080 to
   `build/shots/`. They are reviewed by eye at each gate (Claude reads the PNGs). This is the visual
   check.
-- **Self-test:** `--selftest` drives both routes with scripted input in a hidden window, logs fps and
-  phase timings, and exits 0/1. It runs from source and from the frozen exe.
+- **Self-test:** `--selftest` drives every path with scripted input in a hidden window (`--window` shows
+  it): YES then the invitation's YES (ending in a normal exit), YES then the invitation's NO, and the NO
+  route through the chase. It logs fps and phase timings and exits 0/1, from source and from the frozen
+  exe.
 - **Traceability:** each acceptance ID (L1…R5) maps to its module and test in `tasks/todo.md`, with
   statuses: not started / in progress / implemented / tested / verified in packaged build.
 
@@ -675,6 +781,8 @@ to the YES route.
    **Gate: the NO route doesn't start until G1–G4 pass.**
 5. **G5 NO route:** questions, earthquake, swap, shatter and escape, chase, ending.
 6. **G6 Release:** full verification of both routes and the frozen build, docs, the zip.
+7. **G7 Finale and chase redesign (2026-11-01):** first the chase redesign (§12), then the firefly
+   invitation and its endings (§10.7); then G6's checks again on the new build.
 
 ## 20. Open questions (the default in bold is used if you approve as is)
 1. **Q1 Flower code licence:** iremcnar/Flowers has no licence, so shipping its code in an exe would be

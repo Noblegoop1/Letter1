@@ -20,6 +20,7 @@ QUALITY = 1.0      # scales particle and firefly counts (0.5 for weak machines)
 # A11: calmer ambient motion and no glints when the reader has turned animations off (LETTER_CALM=1 forces it)
 CALM = os.environ.get("LETTER_CALM") == "1" or _animations_off()
 MOTION = 0.35 if CALM else 1.0     # scales the ambient float, hover, wave and wind sway
+WANDER = 6.5       # s the fireflies wander after arriving, before gathering into the invitation (in T["bloomed"])
 
 LETTER_SIZE = (1280, 800)   # logical canvases (SPEC §7); the window size is independent
 NIGHT_SIZE = (640, 640)
@@ -32,6 +33,12 @@ T = {
     "night": 2.0,
     "seed": 6.5,            # pause 0.4, fall 0.8, puff 0.3, pause 0.5, growth 4.5
     "bloom": 2.0,
+    "bloomed": 6.3 + WANDER,   # the fireflies arrive (6.3, night.ARRIVE), then wander before they gather
+    "gather": 7.0,          # they converge and form the invitation
+    "invite": 1.2,          # input lock while the invitation's buttons fade in
+    "letgo": 2.5,           # NO on the invitation: the message disperses, the night fades
+    "farewell": 8.0,        # YES on the invitation: scatter 0-3, brighten 1-3.5, dim 4.5-8
+    "joy": 7.5,             # smile .6-2.8, love eyes 3.2-5.6, fade 5.8-7.0, then the app closes
     "no-1": 0.6,            # input lock while the question crossfades
     "no-2": 0.9,            # earthquake
     "no-3": 0.8,            # button swap

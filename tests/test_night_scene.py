@@ -87,3 +87,52 @@ class Sway(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Invitation(unittest.TestCase):
+    """SPEC §10.7 (I5, I8): the invitation's own buttons, events and locks."""
+
+    def press(self, app, name):
+        pos = app.scene().target(name)
+        for kind in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+            app.handle(pygame.event.Event(kind, pos=pos, button=1))
+
+    def run_for(self, app, seconds):
+        end = app.t + seconds
+        while app.t < end:
+            app.frame(1 / 60)
+
+    def test_buttons_wait_for_their_fade_in_then_choose_yes(self):
+        app = App(size=(1280, 800), start="invite")
+        self.run_for(app, 0.3)
+        self.press(app, "date-yes")
+        self.assertEqual(app.phase, "invite")              # still fading in
+        self.run_for(app, 1.2)
+        self.press(app, "date-yes")
+        self.assertEqual(app.phase, "farewell")
+        self.press(app, "date-no")                          # the decision is made
+        self.assertEqual(app.phase, "farewell")
+
+    def test_no_leads_to_the_crying_face_not_the_chase(self):
+        app = App(size=(1280, 800), start="invite")
+        self.run_for(app, 1.5)
+        self.press(app, "date-no")
+        self.assertEqual(app.phase, "letgo")
+        self.run_for(app, 2.6)
+        self.assertEqual(app.phase, "face")
+
+    def test_other_decisions_do_not_reach_the_invitation(self):
+        app = App(size=(1280, 800), start="invite")
+        self.run_for(app, 1.5)
+        for event in ("yes", "no", "flower", "catch", "course-end"):
+            app.emit(event)
+            self.assertEqual(app.phase, "invite", event)
+
+    def test_hover_lights_the_button_under_the_pointer(self):
+        app = App(size=(1280, 800), start="invite")
+        pos = app.scene().target("date-no")
+        app.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=pos, rel=(0, 0), buttons=(0, 0, 0)))
+        self.run_for(app, 0.6)
+        hover = app.scene().hover
+        self.assertGreater(hover["no"], 0.9)
+        self.assertLess(hover["yes"], 0.05)

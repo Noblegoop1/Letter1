@@ -30,6 +30,9 @@ def selftest(window=False):
     for route, steps in plan.PLANS.items():   # each route in a fresh app, as a reader would play it
         app = App(size=(1280, 800))
         failed = ["%s: %s" % (route, f) for f in app.run_script(steps)]
+        last = [arg for _, action, arg in steps if action == "expect"][-1]
+        if app.phase != last:   # a run can end early (the YES ending closes the app): check it got there
+            failed.append("%s: ended in %s, expected %s" % (route, app.phase, last))
         failures += failed
         ms = sorted(app.frame_ms[1:])   # the first frame builds the letter's caches behind the launch veil
         lines.append("%s route: %s; startup frame %.0f ms; frames: %d, median %.2f ms, p95 %.2f ms, max %.2f ms,"

@@ -15,6 +15,7 @@ SCENE_OF = {
     "intro": "letter", "letter": "letter", "yes-reveal": "letter",
     "no-1": "letter", "no-2": "letter", "no-3": "letter", "no-4": "letter",
     "night": "night", "seed": "night", "grown": "night", "bloom": "night", "bloomed": "night",
+    "gather": "night", "invite": "night", "letgo": "night", "farewell": "night", "joy": "ending", "exit": "ending",
     "chase": "chase", "cornered": "chase",
     "glitch": "ending", "face": "ending", "black": "ending",
 }
@@ -70,6 +71,8 @@ class App:
     def _advance(self, nxt):
         old = self.phase
         self.phase, self.since = nxt
+        if self.phase == "exit":   # the invitation's YES ending closes the app, normally
+            self.running = False
         if self.phase != old:
             if SCENE_OF[old] != SCENE_OF[self.phase]:  # leaving a scene for good: free its arrays
                 self.scenes.pop(SCENE_OF[old], None)
@@ -139,7 +142,7 @@ class App:
         visible = os.environ.get("SDL_VIDEODRIVER") != "dummy"
         self.scene().enter(self.phase, self.t)
         end = until if until is not None else (queue[-1][0] + 0.5 if queue else 1.0)
-        while self.t < end:
+        while self.t < end and self.running:
             while queue and queue[0][0] <= self.t:
                 _, action, arg = queue.pop(0)
                 if action == "click":

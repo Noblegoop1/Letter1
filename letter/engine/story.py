@@ -6,19 +6,23 @@ clicks can never start anything twice.
 """
 from letter import config
 
-YES_ROUTE = ("yes-reveal", "night", "seed", "grown", "bloom", "bloomed")
+YES_ROUTE = ("yes-reveal", "night", "seed", "grown", "bloom", "bloomed", "gather", "invite", "farewell", "joy",
+             "exit", "letgo")
 NO_ROUTE = ("no-1", "no-2", "no-3", "no-4", "chase", "cornered", "glitch", "face", "black")
 
 # timed phases: phase -> next phase (durations come from config.T)
 TIMED = {"intro": "letter", "yes-reveal": "night", "night": "seed", "seed": "grown", "bloom": "bloomed",
+         "bloomed": "gather", "gather": "invite", "farewell": "joy", "joy": "exit", "letgo": "face",
          "no-4": "chase", "glitch": "face", "face": "black"}
 # waiting phases whose first seconds are an animation that must finish before clicks count
-LOCKED_START = ("no-1", "no-2", "no-3")
+LOCKED_START = ("no-1", "no-2", "no-3", "invite")
+FINAL = ("black", "exit")   # nothing happens after these
 EVENTS = {
     ("letter", "yes"): "yes-reveal", ("no-1", "yes"): "yes-reveal",
     ("no-2", "yes"): "yes-reveal", ("no-3", "yes"): "yes-reveal",
     ("letter", "no"): "no-1", ("no-1", "no"): "no-2", ("no-2", "no"): "no-3", ("no-3", "no"): "no-4",
     ("grown", "flower"): "bloom",
+    ("invite", "date-yes"): "farewell", ("invite", "date-no"): "letgo",   # the invitation's own decision
     ("chase", "course-end"): "cornered",
     ("cornered", "catch"): "glitch",
 }
@@ -32,7 +36,7 @@ def duration(phase):
 
 def locked(phase, since, t):
     """True while clicks must be ignored: timed phases, and the opening animation of a question."""
-    if phase in TIMED or phase == "black":
+    if phase in TIMED or phase in FINAL:
         return True
     return phase in LOCKED_START and t - since < duration(phase)
 

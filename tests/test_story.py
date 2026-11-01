@@ -27,9 +27,39 @@ class Story(unittest.TestCase):
     def test_clicks_during_the_intro_are_ignored(self):
         self.assertEqual(story.step("intro", 0.0, 0.5, "yes"), ("intro", 0.0))
 
-    def test_yes_route_runs_to_the_bloomed_garden(self):
-        seen = run([(3.0, "yes"), (30.0, "flower")])
-        self.assertEqual(seen, ["intro", "letter", "yes-reveal", "night", "seed", "grown", "bloom", "bloomed"])
+    def test_yes_route_runs_to_the_invitation_and_waits(self):
+        seen = run([(3.0, "yes"), (30.0, "flower")], until=120)
+        self.assertEqual(seen, ["intro", "letter", "yes-reveal", "night", "seed", "grown", "bloom", "bloomed",
+                                "gather", "invite"])
+
+    def test_the_fireflies_wander_for_the_configured_delay_first(self):
+        from letter import config
+        self.assertGreaterEqual(story.duration("bloomed"), config.WANDER / config.SPEED)
+
+    def test_invitation_yes_ends_with_joy_and_exit(self):
+        seen = run([(3.0, "yes"), (30.0, "flower"), (60.0, "date-yes")], until=120)
+        self.assertEqual(seen[-4:], ["invite", "farewell", "joy", "exit"])
+
+    def test_invitation_no_goes_straight_to_the_crying_face(self):
+        seen = run([(3.0, "yes"), (30.0, "flower"), (60.0, "date-no")], until=120)
+        self.assertEqual(seen[seen.index("invite"):], ["invite", "letgo", "face", "black"])
+
+    def test_the_three_decisions_stay_separate(self):
+        self.assertEqual(story.step("invite", 0.0, 5.0, "yes")[0], "invite")       # the envelope's events
+        self.assertEqual(story.step("invite", 0.0, 5.0, "no")[0], "invite")
+        self.assertEqual(story.step("invite", 0.0, 5.0, "catch")[0], "invite")     # the chase's catch
+        for phase in ("letter", "no-3", "cornered", "bloomed", "gather"):          # date-* only in invite
+            for event in ("date-yes", "date-no"):
+                self.assertEqual(story.step(phase, 0.0, 50.0, event)[0], phase)
+
+    def test_invitation_buttons_wait_for_their_fade_in(self):
+        self.assertEqual(story.step("invite", 10.0, 10.5, "date-yes")[0], "invite")
+        self.assertEqual(story.step("invite", 10.0, 10.01 + story.duration("invite"), "date-yes")[0], "farewell")
+
+    def test_endings_lock_every_input(self):
+        for phase in ("farewell", "joy", "letgo", "exit"):
+            for event in story.EVENT_NAMES:
+                self.assertEqual(story.step(phase, 0.0, 0.01, event)[0], phase)
 
     def test_flower_click_before_grown_does_nothing(self):
         seen = run([(3.0, "yes"), (6.0, "flower")], until=20)

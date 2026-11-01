@@ -92,3 +92,24 @@ class Cornered(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Joy(unittest.TestCase):
+    """SPEC §10.7 step 5: the invitation's YES ends with a smile, love eyes, and a normal exit."""
+
+    def test_both_faces_draw_without_empty_boxes(self):
+        from letter.scenes import ending
+        pygame.init()
+        if not all(pygame.font.match_font(f) for f in ending.SYSTEM_FONTS):
+            self.skipTest("Windows' Cambria / Segoe UI Symbol not installed here (the fallback faces are used)")
+        smile, love = ending.joy_faces(46)
+        self.assertEqual("".join(ch for _, ch in smile), ending.SMILE)
+        self.assertEqual("".join(ch for _, ch in love), ending.LOVE)
+        for font, ch in smile + love:
+            self.assertTrue(ch == " " or ending._draws(font, ch), ch)
+
+    def test_the_smile_turns_to_love_eyes_then_the_app_closes(self):
+        app = App(size=(1280, 800), start="joy")
+        run(app, 7.5 + 0.2)
+        self.assertEqual(app.phase, "exit")
+        self.assertFalse(app.running)

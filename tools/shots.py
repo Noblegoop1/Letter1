@@ -41,6 +41,35 @@ PLAN = [
     (29.0, "shot", "20-fireflies"),
 ]
 
+# the invitation (SPEC §10.7): wandering, gathering, the formed question and its buttons, then each choice
+from letter.engine.story import duration  # noqa: E402
+
+BLOOMED = 20.8 + duration("bloom")
+GATHER = BLOOMED + duration("bloomed")
+INVITE = GATHER + duration("gather")
+CHOICE = INVITE + duration("invite") + 0.5
+INVITE_YES = PLAN + [
+    (GATHER - 2.0, "shot", "21-wandering"),
+    (GATHER + 2.0, "shot", "22-gathering"),
+    (GATHER + 4.5, "shot", "23-converging"),
+    (INVITE + 0.2, "shot", "24-formed"),
+    (CHOICE - 0.6, "move", "date-yes"),
+    (CHOICE - 0.1, "shot", "25-invitation-hover-yes"),
+    (CHOICE, "click", "date-yes"),
+    (CHOICE + 1.2, "shot", "26-yes-scatter"),
+    (CHOICE + 3.4, "shot", "27-yes-flower-brightest"),
+    (CHOICE + 6.4, "shot", "28-yes-dimming"),
+    (CHOICE + duration("farewell") + 1.8, "shot", "29-joy-smile"),
+    (CHOICE + duration("farewell") + 4.6, "shot", "30-joy-love-eyes"),
+]
+INVITE_NO = [step for step in PLAN if step[1] != "shot"] + [
+    (CHOICE - 0.6, "move", "date-no"),
+    (CHOICE - 0.1, "shot", "31-invitation-hover-no"),
+    (CHOICE, "click", "date-no"),
+    (CHOICE + 1.2, "shot", "32-no-letgo"),
+    (CHOICE + duration("letgo") + 4.6, "shot", "33-no-face-and-tear"),
+]
+
 # the NO route: four NOs, the escape, a chase played with one jump, the catch and the ending
 SPACE = 32
 NO_PLAN = [
@@ -85,7 +114,7 @@ def main(sizes):
     for size in sizes:
         out = os.path.join(ROOT, "build", "shots", "%dx%d" % size)
         os.makedirs(out, exist_ok=True)
-        for plan in (PLAN, NO_PLAN):   # each route in a fresh app
+        for plan in (INVITE_YES, INVITE_NO, NO_PLAN):   # each path in a fresh app
             app = App(size=size)
             app.run_script(plan, on_shot=lambda name, screen: pygame.image.save(screen, os.path.join(out, name + ".png")))
         print("saved", out)

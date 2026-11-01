@@ -227,7 +227,179 @@ class LookTests(unittest.TestCase):
         self.assertLess(max(peaks), 3.0)
 
 
+def gathered(dt=1 / 60, settle=True, seed=7):
+    """A swarm that has wandered 13 s and then gathered (for GATHER s, if settle) into the message.
+    -> (ff, targets, t at the start of the gathering, t now)."""
+    from letter.art import invitation
+    targets = invitation.cells()
+    ff = fireflies.Fireflies(seed=seed)
+    fly(ff, 13.0, dt)
+    t0 = round(13.0 / dt) * dt
+    ff.gather(targets, t0, GATHER)
+    t = t0
+    if settle:
+        for n in range(1, int(round((GATHER + 0.2) / dt)) + 1):
+            t = t0 + n * dt
+            ff.update(dt, t, gust, HEAD)
+    return ff, targets, t0, t
+
+
+GATHER = 7.0
+SPEED_CAP = 360.0   # px/s: the gathering and the scatter are brisker than wandering, never a jump
+
+
+class InvitationTests(unittest.TestCase):
+    def test_gathering_is_staggered_smooth_and_settles_at_any_frame_rate(self):
+        for dt in (1 / 30, 1 / 60, 1 / 144):
+            ff, targets, t0, _ = gathered(dt, settle=False)
+            was = ff.positions
+            prev, prev_vis = ff._m_pos.copy(), ff._m_vis.copy()
+            share = []
+            for n in range(1, int(round(GATHER / dt)) + 1):
+                t = t0 + n * dt
+                ff.update(dt, t, gust, HEAD)
+                step = np.hypot(*(ff._m_pos - prev).T)
+                seen = (ff._m_vis > 0) | (prev_vis > 0)
+                self.assertLess(step[seen].max(initial=0), SPEED_CAP * dt, f"dt={dt} t={t - t0:.2f}")   # no teleport
+                wander = np.hypot(*(ff.positions - was).T)   # wanderers hand over without a jump
+                self.assertLess(wander.max(), SPEED_CAP * dt, f"dt={dt} t={t - t0:.2f}")
+                done = ff._m_set & (t >= ff._m_s + ff._m_F)
+                if done.any():   # no snapping: they glide the last of the way
+                    late = done & (t - dt < ff._m_s + ff._m_F)
+                    self.assertLess(step[late].max(initial=0), 1.0, f"dt={dt}")
+                prev, prev_vis, was = ff._m_pos.copy(), ff._m_vis.copy(), ff.positions
+                share.append(ff.formed())
+            share = np.array(share)
+            # staggered: the message fills over seconds, not at one moment
+            self.assertGreater(np.ptp(ff._m_s), 0.3 * GATHER, f"dt={dt}")
+            third = len(share) // 3
+            self.assertLess(share[third], 0.1)
+            self.assertTrue(0.05 < share[2 * third] < 0.95, f"dt={dt}: {share[2 * third]:.2f}")
+            self.assertEqual(share[-1], 1.0, f"dt={dt}")
+            err = np.hypot(*(ff._m_pos - targets).T)
+            self.assertLess(err.max(), 0.5, f"dt={dt}")   # on its place, hovering a fraction of a pixel
+
+    def test_one_firefly_per_target_and_the_wanderers_join(self):
+        ff, targets, _, _ = gathered()
+        self.assertEqual(ff._m_n, len(targets))
+        np.testing.assert_array_equal(ff._m_P[3], targets)
+        self.assertEqual(len(np.unique(targets, axis=0)), len(targets))
+        own = ff._m_src[ff._m_src >= 0]
+        self.assertEqual(len(own), (ff._band > 0).sum())        # mid and near wanderers take places
+        self.assertEqual(len(np.unique(own)), len(own))
+        np.testing.assert_allclose(ff.positions[own], np.clip(targets[ff._m_src >= 0], 24, SIZE - 25), atol=0.5)
+        np.testing.assert_allclose(ff._keep[own], 0.0, atol=1e-6)   # their light is now the message dot's
+        self.assertTrue((ff._keep[ff._band == 0] == 1).all())       # the far band keeps wandering
+
+    def test_joiners_start_outside_the_message_and_fade_in(self):
+        from letter.art import invitation
+        x0, y0, w, h = invitation.BOX
+        ff, targets, t0, _ = gathered(settle=False)
+        join = ff._m_src < 0
+        self.assertGreater(join.sum(), 0.9 * len(targets))
+        p0 = ff._m_P[0, join]
+        grass, edge = p0[:, 1] >= 455, (p0[:, 0] < 0) | (p0[:, 0] >= SIZE)
+        self.assertTrue((grass | edge).all())
+        self.assertTrue(0.3 < grass.mean() < 0.8)
+        first = np.full((len(targets), 2), np.nan)
+        first_b = np.zeros(len(targets))
+        for n in range(1, int(GATHER * 60) + 1):
+            t = t0 + n / 60
+            ff.update(1 / 60, t, gust, HEAD)
+            b = ff._message_bright(t)
+            new = join & (b > 0) & np.isnan(first[:, 0])
+            first[new], first_b[new] = ff._m_pos[new], b[new]
+        self.assertFalse(np.isnan(first[join]).any())
+        f = first[join]
+        inside = (f[:, 0] > x0 - 20) & (f[:, 0] < x0 + w + 20) & (f[:, 1] > y0 - 20) & (f[:, 1] < y0 + h + 20)
+        self.assertFalse(inside.any())                    # they appear in the grass or at the edges
+        self.assertLess(first_b[join].max(), 0.1)          # and fade in, no pop
+        self.assertGreater(np.ptp(ff._m_s[join]), 3.0)     # one after another
+
+    def test_the_formed_message_reads_and_glows_softly(self):
+        from letter.art import invitation
+        x0, y0, w, h = invitation.BOX
+        ff, targets, _, t = gathered()
+        c = np.zeros((SIZE, SIZE, 3), np.float32)
+        ff.render(c, t, layer="near")
+        lum = c.sum(-1)
+        on = lum[np.round(targets[:, 1]).astype(int), np.round(targets[:, 0]).astype(int)]
+        self.assertGreater(np.quantile(on, 0.05), 0.5)     # every letter is lit
+        self.assertLess(c.max(), 1.6)                      # pointillist, never a hot neon sign
+        x, y, s = ff.lights(t)
+        msg = (x >= x0) & (x < x0 + w) & (y >= y0) & (y < y0 + h)
+        self.assertGreater(msg.sum(), 50)
+        self.assertLess(s[msg].max(), 0.35)                # a modest halo per 8 px cell
+        # they keep pulsing once formed, never in unison
+        trace = np.array([ff._message_bright(t + k / 30)[:200] for k in range(120)])
+        self.assertGreater(np.ptp(trace, axis=0).min(), 0.05)
+        r = np.corrcoef(trace.T[:40])
+        np.fill_diagonal(r, 0)
+        self.assertLess(r.max(), 0.99)
+
+    def test_scatter_flies_outward_and_fades(self):
+        for gentle, reach in ((False, (120, 600)), (True, (8, 90))):
+            ff, targets, _, t = gathered()
+            own = ff._m_src[ff._m_src >= 0]
+            ff.scatter(t, 3.0, gentle=gentle)
+            prev = ff._m_pos.copy()
+            peak = 0.0
+            for n in range(1, 3 * 60 + 2):
+                ff.update(1 / 60, t + n / 60, gust, HEAD)
+                step = np.hypot(*(ff._m_pos - prev).T)
+                self.assertLess(step.max(), SPEED_CAP / 60, f"gentle={gentle}")
+                prev = ff._m_pos.copy()
+                peak = max(peak, float(ff._message_bright(t + n / 60).max()))
+                if n == 30:
+                    self.assertLess(ff.formed(), 1.0)
+            away = np.hypot(*(ff._m_pos - targets).T)
+            self.assertTrue(reach[0] < np.median(away) < reach[1], f"gentle={gentle}: {np.median(away):.0f}")
+            self.assertEqual(ff._message_bright(t + 3.1).max(), 0.0)   # all faded
+            self.assertEqual(ff.formed(), 0.0)
+            np.testing.assert_allclose(ff._keep[own], 0.0, atol=1e-6)   # the wanderers that joined left too
+            if not gentle:
+                self.assertGreater(peak, 1.0)                  # they glow up as they break away
+            c = np.zeros((SIZE, SIZE, 3), np.float32)
+            ff.render(c, t + 3.1, layer="near")
+            self.assertTrue(np.isfinite(c).all())
+
+    def test_gather_is_deterministic_per_seed(self):
+        a, b = gathered(seed=7)[0], gathered(seed=7)[0]
+        np.testing.assert_array_equal(a._m_s, b._m_s)
+        np.testing.assert_array_equal(a._m_pos, b._m_pos)
+        c = gathered(seed=8)[0]
+        self.assertFalse(np.allclose(a._m_s, c._m_s))
+
+
 class BudgetTests(unittest.TestCase):
+    def test_message_fits_the_frame_budget(self):
+        """SPEC 15: the message fireflies (~1,200) while gathering and formed: update, the three layers
+        and lights for the whole swarm <= 3 ms per frame on this PC (best of runs)."""
+        import copy
+        ff, _, t0, _ = gathered(settle=False)
+        for n in range(1, 121):   # into the thick of the gathering
+            ff.update(1 / 60, t0 + n / 60, gust, HEAD)
+        c = np.zeros((SIZE, SIZE, 3), np.float32)
+        for label, start, skip in (("gathering", t0 + 2.0, 0.0), ("formed", t0 + 2.0, GATHER)):
+            snap = copy.deepcopy(ff)
+            t = start
+            for n in range(int(skip * 60)):
+                t += 1 / 60
+                snap.update(1 / 60, t, gust, HEAD)
+            best = float("inf")
+            for _ in range(3):
+                run, tt = copy.deepcopy(snap), t
+                begin = time.perf_counter()
+                for _ in range(120):
+                    tt += 1 / 60
+                    run.update(1 / 60, tt, gust, HEAD)
+                    for layer in ("far", "near", "bokeh"):
+                        run.render(c, tt, layer=layer)
+                    run.lights(tt)
+                best = min(best, (time.perf_counter() - begin) / 120 * 1000)
+            print(f"\n  fireflies + message x{ff._m_n} {label}: {best:.3f} ms per frame (budget 3 ms)", end="")
+            self.assertLess(best, 3.0)
+
     def test_update_and_render_fit_the_frame_budget(self):
         """SPEC 15: fireflies (update, the three layers and lights) <= 2 ms per frame at 40 (and <= 4 ms
         at 80) on this PC."""

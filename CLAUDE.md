@@ -10,8 +10,10 @@ module index and gate order. `docs/adr/0001-desktop-stack.md` records the stack 
 `docs/superseded/web/` holds the old web specs for history; never follow them.
 
 Status: SPEC v3 **approved 2026-10-31** (defaults for Q1–Q5; later change, same day: the envelope, paper, dedication, questions and all text stay ASCII in JetBrains Mono; only the night flower, meadow and fireflies are particle dots; further same-day changes are listed in SPEC's status line: shaded ASCII banner, visible tilt and hover, the flower is now a sea holly in blue gradients, clouds and moon; 2026-11-01: the chase player is a mouse *pointer*, the ending face a kaomoji). Gates
-G1–G5 are built (both routes play end to end); G6 release is in progress (see `tasks/todo.md` for what is
-verified). User-facing notes are in `README.md`. Work is spec-gated: specify → plan → tasks → implement,
+G1–G5 are built (both routes play end to end). **G7 (2026-11-01) is built and tested:** the chase is
+redesigned as a pointer-vs-floating-NO-button runner (SPEC §12), and the YES route gains the firefly
+invitation, "Will you go on a date Tuesday?", with its own YES/NO and two endings (SPEC §10.7). G6's
+release checks follow (see `tasks/todo.md` for what is verified). User-facing notes are in `README.md`. Work is spec-gated: specify → plan → tasks → implement,
 with approval between. Don't commit unless asked.
 
 ## Commands (SPEC §4)
@@ -63,8 +65,14 @@ Style references are three generative-art programs by iremcnar.
   calling something fast.
 - Verify visuals by rendering screenshots (`tools/shots.py`) and looking at the PNGs, at 1280 × 800 and
   1920 × 1080. The headless self-test covers flows.
-- Everything visible is ASCII glyphs except the night's pointillist dots and the ending's kaomoji
-  face; any non-ASCII glyph must exist in the bundled font (tested).
+- Everything visible is ASCII glyphs except the night's pointillist dots and the kaomoji faces. A
+  kaomoji's glyphs must exist in the bundled font (tested), except the joy faces (hearts and similar),
+  which come from Windows' Segoe UI Symbol at runtime with a bundled-font fallback.
+- Three decisions stay separate: the envelope's YES/NO (`yes`/`no`), the invitation's YES/NO
+  (`date-yes`/`date-no`, only in `invite`), and catching the cornered NO (`catch`). They have their own
+  buttons, hitboxes, events and state.
+- Builds: the app is `dist\LetterToEsther\LetterToEsther.exe` (or the zip). `tools/build.py` deletes
+  PyInstaller's work folder, whose half-built exe fails with "Failed to load Python DLL".
 - Ask before:
   - adding dependencies beyond pygame-ce, numpy and pyinstaller;
   - adding sound;
